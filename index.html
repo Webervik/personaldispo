@@ -275,7 +275,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--cream);color:var(--ink);m
     <h1>Mein Dienstplan</h1>
     <div class="header-tabs">
       <button class="header-tab active" onclick="showTab('plan',this)">Monatsübersicht</button>
-      <button class="header-tab" onclick="showTab('myplan',this)">📋 Mein Plan</button>
+      <button class="header-tab" id="myplan-tab-btn" onclick="showTab('myplan',this)">📋 Mein Plan</button>
     </div>
     <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
       <span class="nurse-badge" id="header-nurse-name">—</span>
@@ -459,9 +459,11 @@ function updateNavButtons() {
 function showTab(tab, btn) {
   document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
   document.querySelectorAll('.header-tab').forEach(el => el.classList.remove('active'));
-  document.getElementById('tab-' + tab).style.display = '';
+  const tabEl = document.getElementById('tab-' + tab);
+  if (tabEl) tabEl.style.display = '';
   if (btn) btn.classList.add('active');
   if (tab === 'myplan') renderPersonalSchedule();
+  if (tab === 'plan') { renderCalendar(); }
 }
 
 // ── View toggle ───────────────────────────────────────────────────────────────
@@ -662,22 +664,23 @@ function showNurseSelect() {
 }
 
 function pickNurse(id) {
-  selectedNurseId=id;
-  const nurse=getNurse(id);
+  selectedNurseId = id;
+  const nurse = getNurse(id);
   sessionStorage.setItem('pflegedispo_nurse_id', id);
-  document.getElementById('header-nurse-name').textContent=nurse?.name||'—';
-  document.getElementById('nurse-select-screen').style.display='none';
-  document.getElementById('app').style.display='';
+  document.getElementById('header-nurse-name').textContent = nurse?.name || '—';
+  document.getElementById('nurse-select-screen').style.display = 'none';
+  document.getElementById('app').style.display = '';
   renderCalendar();
   renderPersonalSchedule();
-  // Show Mein Plan by default
-  showTab('myplan', document.querySelector('.header-tab:last-child'));
+  // Show Mein Plan tab
+  const myPlanBtn = document.getElementById('myplan-tab-btn');
+  showTab('myplan', myPlanBtn);
 }
 
 function switchNurse() {
   sessionStorage.removeItem('pflegedispo_nurse_id');
-  selectedNurseId=null;
-  document.getElementById('app').style.display='none';
+  selectedNurseId = null;
+  document.getElementById('app').style.display = 'none';
   showNurseSelect();
 }
 
@@ -730,6 +733,7 @@ function checkPin() {
 let _loadedData = null;
 function proceedAfterPin() {
   const s = _loadedData;
+  if (!s) { showNurseSelect(); return; }  // safety check
   state.nurses      = s.nurses      || [];
   state.shiftTypes  = s.shiftTypes  || [];
   state.assignments = s.assignments || {};
@@ -745,7 +749,7 @@ function proceedAfterPin() {
     document.getElementById('loading-screen').style.display = 'none';
     document.getElementById('app').style.display = '';
     renderCalendar(); renderPersonalSchedule();
-    showTab('myplan', document.querySelector('.header-tab:last-child'));
+    showTab('myplan', document.getElementById('myplan-tab-btn'));
   } else {
     showNurseSelect();
   }
