@@ -260,7 +260,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--cream);color:var(--ink);m
 </div>
 
 <!-- Nurse selection screen (shown before picking a name) -->
-<div id="nurse-select-screen" style="display:none">
+<div id="nurse-select-screen" style="display:none;flex-direction:column;align-items:center;justify-content:center;min-height:100vh">
   <div class="nurse-select-screen">
     <div style="font-size:32px">👩‍⚕️</div>
     <h2>Wer bist du?</h2>
@@ -656,7 +656,7 @@ function renderPersonalSchedule() {
 function showNurseSelect() {
   document.getElementById('loading-screen').style.display='none';
   document.getElementById('app').style.display='none';
-  document.getElementById('nurse-select-screen').style.display='';
+  document.getElementById('nurse-select-screen').style.display='flex';
   const grid=document.getElementById('nurse-select-grid');
   grid.innerHTML=state.nurses.filter(n=>n.active).map(n=>
     `<button class="nurse-pick-btn" onclick="pickNurse('${n.id}')">${n.name}</button>`
@@ -733,22 +733,37 @@ function checkPin() {
 let _loadedData = null;
 function proceedAfterPin() {
   const s = _loadedData;
-  if (!s) { showNurseSelect(); return; }  // safety check
+  if (!s) {
+    // _loadedData lost (e.g. page reload after PIN) — reload from cloud
+    document.getElementById('loading-screen').style.display = 'flex';
+    boot(); return;
+  }
   state.nurses      = s.nurses      || [];
   state.shiftTypes  = s.shiftTypes  || [];
   state.assignments = s.assignments || {};
+
+  if (state.nurses.length === 0) {
+    document.getElementById('loading-screen').style.display = 'none';
+    document.getElementById('error-screen').style.display   = 'flex';
+    document.getElementById('error-msg').textContent =
+      'Keine Pflegerinnen in den Cloud-Daten gefunden. Bitte zuerst in der Admin-App speichern und dann erneut versuchen.';
+    return;
+  }
+
   const now = new Date();
   state.viewYear  = now.getFullYear();
   state.viewMonth = now.getMonth();
   updateNavButtons();
-  const savedId = sessionStorage.getItem('pflegedispo_nurse_id');
+
+  const savedId    = sessionStorage.getItem('pflegedispo_nurse_id');
   const savedNurse = state.nurses.find(n => n.id === savedId && n.active);
   if (savedNurse) {
     selectedNurseId = savedNurse.id;
     document.getElementById('header-nurse-name').textContent = savedNurse.name;
-    document.getElementById('loading-screen').style.display = 'none';
-    document.getElementById('app').style.display = '';
-    renderCalendar(); renderPersonalSchedule();
+    document.getElementById('loading-screen').style.display  = 'none';
+    document.getElementById('app').style.display             = '';
+    renderCalendar();
+    renderPersonalSchedule();
     showTab('myplan', document.getElementById('myplan-tab-btn'));
   } else {
     showNurseSelect();
@@ -757,27 +772,60 @@ function proceedAfterPin() {
 
 // ── Boot sequence ─────────────────────────────────────────────────────────────
 async function boot() {
-  // Check configuration is filled in
-  if (!BIN_ID || BIN_ID === 'DEINE_BIN_ID_HIER' || !READ_KEY || READ_KEY === 'DEIN_READ_KEY_HIER') {
-    document.getElementById('loading-screen').style.display='none';
-    document.getElementById('error-screen').style.display='flex';
-    document.getElementById('error-msg').textContent=
-      'App noch nicht konfiguriert. Bitte Bin ID und Read Key in der HTML-Datei eintragen.';
-    return;
+  const loadStatus = document.getElementById('load-status');
+  const showError = (msg, detail='') => {
+    document.getElementById('loading-screen').style.display = 'none';
+    document.getElementById('error-screen').style.display   = 'flex';
+    document.getElementById('error-msg').textContent        = msg;
+    if (detail) {
+      const d = document.createElement('div');
+      d.style.cssText = 'font-size:11px;color:#888;margin-top:8px;font-family:monospace;word-break:break-all;max-width:360px';
+      d.textContent = detail;
+      document.getElementById('error-screen').appendChild(d);
+    }
+  };
+
+  // Check configuration
+  if (!BIN_ID || BIN_ID === 'DEINE_BIN_ID_HIER') {
+    showError('Bin ID fehlt — bitte in der HTML-Datei eintragen.'); return;
+  }
+  if (!READ_KEY || READ_KEY === 'DEIN_READ_KEY_HIER') {
+    showError('Read Key fehlt — bitte in der HTML-Datei eintragen.'); return;
   }
 
-  document.getElementById('load-status').textContent='Verbindung zu JSONbin.io…';
+  loadStatus.textContent = 'Verbindung zu JSONbin.io…';
+
   try {
+    loadStatus.textContent = 'Daten werden geladen…';
     const res = await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}/latest`, {
       headers: { 'X-Access-Key': READ_KEY }
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.message || 'HTTP ' + res.status);
+
+    loadStatus.textContent = `Antwort erhalten (HTTP ${res.status})…`;
+
+    let data;
+    try {
+      data = await res.json();
+    } catch(jsonErr) {
+      showError('Ungültige Antwort von JSONbin.', 'JSON-Fehler: ' + jsonErr.message); return;
+    }
+
+    if (!res.ok) {
+      showError(
+        `JSONbin Fehler (${res.status})`,
+        data?.message || 'Unbekannter Fehler — Read Key prüfen'
+      ); return;
+    }
+
+    if (!data.record) {
+      showError('Keine Daten in der Cloud gefunden.', 'Bitte zuerst in der Admin-App speichern.'); return;
+    }
 
     _loadedData = data.record;
     correctPin  = data.record.pin || '';
 
-    // Check PIN
+    loadStatus.textContent = 'Bereit.';
+
     if (correctPin && sessionStorage.getItem('pflegedispo_pin_ok') !== '1') {
       showPinScreen();
     } else {
@@ -786,9 +834,11 @@ async function boot() {
     }
 
   } catch(e) {
-    document.getElementById('loading-screen').style.display='none';
-    document.getElementById('error-screen').style.display='flex';
-    document.getElementById('error-msg').textContent='Fehler beim Laden: ' + e.message;
+    // Network error (offline, CORS, etc.)
+    showError(
+      'Netzwerkfehler — Dienstplan konnte nicht geladen werden.',
+      e.message
+    );
     console.error(e);
   }
 }
