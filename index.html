@@ -1025,6 +1025,15 @@
           <button class="copy-btn" onclick="copyToClip('cfg-read-key')">Kopieren</button>
         </div>
       </div>
+      <div class="form-group" style="margin-top:12px">
+        <label class="form-label">PIN für Pflegerinnen <span style="font-weight:400;color:var(--slate)">(4-stellig — schützt den Pflegerin-Link)</span></label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="text" id="cfg-pin" class="form-input" placeholder="z.B. 1234" maxlength="4"
+            style="max-width:100px;letter-spacing:6px;font-size:18px;font-family:'DM Serif Display',serif"
+            oninput="this.value=this.value.replace(/\D/g,'')"/>
+          <span style="font-size:12px;color:var(--slate)">Leer lassen = kein PIN-Schutz</span>
+        </div>
+      </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
         <button class="btn btn-primary" onclick="saveToCloud()">☁ Jetzt in Cloud speichern</button>
         <button class="btn btn-secondary" onclick="loadFromCloud()">↓ Aus Cloud laden</button>
@@ -1035,15 +1044,27 @@
     <div class="settings-section">
       <div class="settings-section-title">🔗 Pflegerin-Link</div>
       <p style="font-size:12px;color:var(--slate);margin-bottom:10px">
-        Diesen Link teile mit deinen Pflegerinnen. Sie sehen nur den aktuellen und die nächsten 2 Monate,
-        können nichts bearbeiten und wählen ihren Namen, um ihren persönlichen Dienstplan zu sehen.
+        Teile diesen Link mit deinen Pflegerinnen. Er enthält die Zugangsdaten — am besten per
+        WhatsApp oder als QR-Code verschicken, nicht öffentlich posten.
+        Die PIN schützt zusätzlich gegen unberechtigten Zugriff.
       </p>
-      <div style="display:flex;gap:8px;align-items:center">
-        <input type="text" id="nurse-link" class="form-input" readonly style="flex:1;background:var(--cream);font-size:11px" placeholder="Bin ID und Read-Key werden benötigt"/>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+        <input type="text" id="nurse-link" class="form-input" readonly
+          style="flex:1;background:var(--cream);font-size:11px"
+          placeholder="Bin ID und Read-Key werden benötigt"/>
         <button class="copy-btn" onclick="copyToClip('nurse-link')">Kopieren</button>
       </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="text" id="nurse-link-short" class="form-input" readonly
+          style="flex:1;background:var(--cream);font-size:12px;color:var(--teal);font-weight:500"
+          placeholder="Kurze URL (nach Konfiguration)"/>
+        <button class="copy-btn" onclick="copyToClip('nurse-link-short')">Kopieren</button>
+      </div>
       <p style="font-size:11px;color:var(--slate);margin-top:6px">
-        Du kannst die Datei auch auf GitHub Pages hosten — der Link enthält dann die Parameter automatisch.
+        💡 <strong>Tipp:</strong> Den langen Link kannst du bei
+        <a href="https://tinyurl.com" target="_blank" style="color:var(--teal)">tinyurl.com</a> oder
+        <a href="https://t.ly" target="_blank" style="color:var(--teal)">t.ly</a>
+        in einen kurzen Link umwandeln — dann sieht er viel schöner aus, z.B. <code>t.ly/dispo26</code>.
       </p>
     </div>
 
@@ -1055,7 +1076,7 @@
   </div>
 
   <!-- TAB: WARNUNGEN -->
-  <div id="tab-alerts" class="tab-content">  <div id="tab-alerts" class="tab-content">
+  <div id="tab-alerts" class="tab-content">
     <h2 style="font-family:'DM Serif Display',serif; font-size:24px; margin-bottom:16px;">Alle Warnungen</h2>
     <div id="all-alerts-content"></div>
   </div>
@@ -1153,6 +1174,7 @@ let state = {
   assignments: {},
   viewYear: 2026,
   viewMonth: 0,
+  pin: '',
 };
 
 // Nurse column order (array of nurse IDs) — persisted in localStorage
@@ -1202,9 +1224,12 @@ function applyCloudConfig() {
   cloudCfg.binId     = document.getElementById('cfg-bin-id')?.value     || cloudCfg.binId;
   // Update nurse link
   const linkEl = document.getElementById('nurse-link');
+  const linkShortEl = document.getElementById('nurse-link-short');
   if (linkEl && cloudCfg.binId && cloudCfg.readKey) {
-    const base = window.location.href.split('?')[0];
-    linkEl.value = `${base}?bin=${cloudCfg.binId}&key=${encodeURIComponent(cloudCfg.readKey)}`;
+    const base = window.location.href.split('?')[0].replace('Pflegedisposition_2026', 'Pflegedisposition_Pflegerinnen');
+    const fullLink = `${base}?bin=${cloudCfg.binId}&key=${encodeURIComponent(cloudCfg.readKey)}`;
+    linkEl.value = fullLink;
+    if (linkShortEl) linkShortEl.value = '→ Auf tinyurl.com oder t.ly kürzen';
   }
   // Show sync bar if configured
   const sb = document.getElementById('sync-bar');
@@ -1223,11 +1248,16 @@ function setSyncStatus(status, msg) {
 async function saveToCloud() {
   if (!cloudCfg.masterKey) { alert('Bitte zuerst Master Key eingeben.'); return; }
   setSyncStatus('saving', 'Wird gespeichert…');
+  // Read PIN from settings field if open
+  const pinEl = document.getElementById('cfg-pin');
+  if (pinEl) state.pin = pinEl.value.trim();
+
   const payload = {
     version: '2026',
     nurses: state.nurses,
     shiftTypes: state.shiftTypes,
     assignments: state.assignments,
+    pin: state.pin || '',
   };
   try {
     let url, method, headers;
@@ -2505,18 +2535,14 @@ function renderNursePicker(containerId, onSelect) {
   ).join('');
 }
 
-function selectNurse(id, containerId, _unused) {
+function selectNurse(id, containerId) {
   selectedNurseId = id;
-  // Re-render pickers
   renderNursePicker('nurse-picker', null);
   renderNursePicker('settings-nurse-picker', null);
-  // If in settings, show nurse banner & switch to plan
-  if (containerId === 'settings-nurse-picker') {
-    const n = getNurse(id);
-    document.getElementById('nurse-banner-name').textContent = n?.name || '';
-    document.getElementById('nurse-banner').style.display = 'flex';
-  }
   renderPersonalSchedule();
+  // Switch to Mein Plan tab and show result
+  const myPlanBtn = document.getElementById('myPlanTabBtn');
+  showTab('myplan', myPlanBtn);
 }
 
 function renderPersonalSchedule() {
@@ -2610,6 +2636,7 @@ function initSettingsTab() {
   document.getElementById('cfg-master-key').value = cloudCfg.masterKey || '';
   document.getElementById('cfg-read-key').value   = cloudCfg.readKey   || '';
   document.getElementById('cfg-bin-id').value     = cloudCfg.binId     || '';
+  document.getElementById('cfg-pin').value        = state.pin || '';
   applyCloudConfig();
   renderNursePicker('settings-nurse-picker', null);
 }
