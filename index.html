@@ -1,0 +1,1359 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mein Dienstplan</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap');
+:root {
+  --cream:#F7F3EE;--warm-white:#FDFAF7;--ink:#1C1814;--ink-light:#3D3530;
+  --slate:#7A7068;--accent:#C6501A;--accent-soft:#E8927A;--accent-bg:#FBF0EB;
+  --teal:#2A7A6F;--teal-bg:#E8F4F2;--gold:#B08A2F;--gold-bg:#F7F0DC;
+  --border:#E2DAD2;--radius:12px;--radius-sm:8px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'DM Sans',sans-serif;background:var(--cream);color:var(--ink);min-height:100vh;font-size:14px;line-height:1.5}
+
+/* ── Loading / Error screens ── */
+#loading-screen,#error-screen{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  min-height:100vh;gap:16px;padding:32px;text-align:center;
+}
+.spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--teal);
+  border-radius:50%;animation:spin 0.8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg)}}
+.error-icon{font-size:48px}
+
+/* ── App shell ── */
+#app{display:none}#app.visible{display:block}
+.app-header{
+  background:var(--ink);color:var(--cream);padding:0 20px;
+  display:flex;align-items:center;gap:12px;height:52px;
+  position:sticky;top:0;z-index:100;
+}
+.app-header h1{font-family:'DM Serif Display',serif;font-size:17px;letter-spacing:-.3px;}
+.header-tabs{display:flex;gap:3px;margin-left:auto}
+.header-tab{background:none;border:none;color:rgba(247,243,238,.6);padding:5px 12px;
+  border-radius:6px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:500;
+  transition:all .15s;white-space:nowrap}
+.header-tab:hover{color:var(--cream);background:rgba(255,255,255,.1)}
+.header-tab.active{color:var(--cream);background:var(--teal)}
+.nurse-badge{
+  background:var(--teal);color:white;padding:3px 10px;border-radius:12px;
+  font-size:12px;font-weight:500;
+}
+.app-body{max-width:1200px;margin:0 auto;padding:20px}
+
+/* ── Month nav ── */
+.month-nav{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+.month-nav h2{font-family:'DM Serif Display',serif;font-size:26px;min-width:200px;text-align:center}
+.btn-icon{background:var(--warm-white);border:1px solid var(--border);border-radius:var(--radius-sm);
+  width:34px;height:34px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  font-size:15px;transition:all .15s;color:var(--ink)}
+.btn-icon:hover{background:var(--teal-bg);border-color:var(--teal);color:var(--teal)}
+.btn-icon:disabled{opacity:.3;cursor:default}
+
+/* ── View toggle ── */
+.view-toggle-btn{background:none;border:none;cursor:pointer;padding:5px 8px;border-radius:6px;
+  color:var(--slate);display:flex;align-items:center;justify-content:center;transition:all .15s;line-height:0}
+.view-toggle-btn:hover{background:var(--border);color:var(--ink)}
+.view-toggle-btn.active{background:var(--ink);color:var(--cream)}
+
+/* ── Stats ── */
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:16px}
+.stat-card{background:var(--warm-white);border:1px solid var(--border);border-radius:var(--radius);padding:14px}
+.stat-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--slate);margin-bottom:3px}
+.stat-value{font-family:'DM Serif Display',serif;font-size:26px;color:var(--ink)}
+.stat-sub{font-size:10px;color:var(--slate);margin-top:1px}
+
+/* ── Calendar ── */
+.panel{background:var(--warm-white);border:1px solid var(--border);border-radius:var(--radius);padding:0;overflow:hidden;margin-bottom:14px}
+.calendar-wrapper{overflow-x:auto}
+.calendar-grid{display:grid;grid-template-columns:54px repeat(7,1fr);gap:0;min-width:700px;
+  border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.cal-header-empty{background:var(--ink);padding:7px 8px;border-bottom:1px solid rgba(255,255,255,.1)}
+.cal-header-day{background:var(--ink);color:var(--cream);padding:7px 4px;text-align:center;
+  font-weight:600;font-size:11px;letter-spacing:.5px;text-transform:uppercase;
+  border-bottom:1px solid rgba(255,255,255,.1);border-left:1px solid rgba(255,255,255,.08)}
+.cal-row-label{background:var(--warm-white);padding:6px 8px;border-bottom:1px solid var(--border);
+  border-right:1px solid var(--border);font-size:11px;color:var(--slate);
+  display:flex;flex-direction:column;justify-content:center;min-height:62px}
+.cal-cell{padding:3px;border-bottom:1px solid var(--border);border-left:1px solid var(--border);
+  min-height:62px;position:relative;vertical-align:top}
+.cal-cell.weekend{background:rgba(176,138,47,.04)}
+.cal-cell.today{background:var(--teal-bg)!important}
+.cal-cell.other-month{opacity:.3;pointer-events:none}
+/* Coverage states */
+.cal-cell.cov-full{background:#F0FDF4!important}
+.cal-cell.cov-partial{background:#FFFBEB!important}
+.cal-cell.cov-none{background:#FFF1F2!important}
+.cal-cell.cov-full.weekend{background:#E8FAF0!important}
+.cal-cell.cov-partial.weekend{background:#FFF7E0!important}
+.cal-cell.cov-none.weekend{background:#FFE8EA!important}
+/* My-shift highlight */
+.cal-cell.my-shift{outline:2px solid var(--teal);outline-offset:-2px}
+.day-number{font-size:10px;color:var(--slate);font-weight:600;margin-bottom:2px;line-height:1;display:flex;align-items:center;gap:3px}
+.cal-cell.weekend .day-number{color:var(--gold)}
+.cal-cell.today .day-number{color:var(--teal)}
+.holiday-badge{background:var(--accent);color:white;font-size:8px;padding:1px 3px;border-radius:2px;font-weight:700;letter-spacing:.2px;max-width:48px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cov-bar{height:3px;border-radius:0 0 2px 2px;margin:2px -3px -3px -3px}
+.cov-bar-full{background:#22C55E}.cov-bar-partial{background:#EAB308}.cov-bar-none{background:#F43F5E}
+.gap-label{font-size:9px;color:#B45309;font-weight:600;background:#FEF9C3;border:1px solid #FDE047;
+  border-radius:3px;padding:1px 4px;margin-bottom:2px;display:inline-block}
+.gap-label-none{font-size:9px;color:#BE123C;font-weight:600;background:#FFE4E6;border:1px solid #FECDD3;
+  border-radius:3px;padding:1px 4px;margin-bottom:2px;display:inline-block}
+/* Shift chips — neutral */
+.shift-chip{display:flex;align-items:center;gap:3px;padding:2px 5px;border-radius:4px;
+  font-size:10px;font-weight:500;margin-bottom:2px;line-height:1.3;
+  background:rgba(28,24,20,.07);color:var(--ink)}
+/* MY shift chip — teal highlight */
+.shift-chip.mine{background:var(--teal);color:white;font-weight:600}
+.chip-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60px}
+.chip-time{font-size:9px;opacity:.75;white-space:nowrap;margin-left:1px}
+.shift-chip.mine .chip-time{opacity:.85}
+
+/* ── Table view ── */
+.disp-table{border-collapse:collapse;width:100%;min-width:700px;font-size:12px}
+.disp-table th{background:var(--ink);color:var(--cream);padding:6px 8px;text-align:center;
+  font-weight:600;font-size:10px;letter-spacing:.4px;text-transform:uppercase;white-space:nowrap;
+  border-right:1px solid rgba(255,255,255,.1);position:sticky;top:0;z-index:2}
+.disp-table th.col-date{text-align:left;min-width:100px;position:sticky;left:0;z-index:3}
+.disp-table th.col-me{background:var(--teal)}
+.disp-table td{padding:4px 6px;border-bottom:1px solid var(--border);border-right:1px solid var(--border);
+  vertical-align:middle;text-align:center;min-width:72px}
+.disp-table td.col-date{text-align:left;font-size:11px;white-space:nowrap;
+  background:var(--warm-white);position:sticky;left:0;z-index:1;
+  border-right:2px solid var(--border);padding:4px 10px}
+.disp-table tr:hover td{filter:brightness(.97)}
+.disp-table tr.row-weekend td{background:rgba(176,138,47,.04)}
+.disp-table tr.row-weekend td.col-date{background:#FBF7ED}
+.disp-table tr.row-holiday td.col-date{background:#FEF3E9}
+.disp-table tr.row-today td{background:var(--teal-bg)!important}
+.tbl-shift{display:inline-block;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:500;
+  line-height:1.6;background:rgba(28,24,20,.07);color:var(--ink);white-space:nowrap}
+.tbl-shift.mine{background:var(--teal);color:white;font-weight:600}
+.cov-dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;flex-shrink:0;vertical-align:middle}
+.cov-dot-full{background:#22C55E}.cov-dot-partial{background:#EAB308}.cov-dot-none{background:#F43F5E}
+
+/* ── Signup view ── */
+.signup-month-title{font-family:'DM Serif Display',serif;font-size:24px;margin-bottom:4px}
+.signup-subtitle{font-size:13px;color:var(--slate);margin-bottom:20px}
+.signup-day{margin-bottom:10px;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.signup-day-header{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--warm-white)}
+.signup-day-date{font-family:'DM Serif Display',serif;font-size:20px;min-width:32px;line-height:1}
+.signup-day-name{font-size:12px;color:var(--slate)}
+.signup-day-full{font-size:11px;background:#F0FDF4;color:#15803D;border:1px solid #BBF7D0;padding:2px 8px;border-radius:8px;margin-left:auto}
+.signup-slots{display:flex;gap:8px;padding:10px 14px;background:var(--cream);flex-wrap:wrap}
+.signup-slot{padding:8px 16px;border-radius:var(--radius-sm);font-family:inherit;font-size:13px;font-weight:500;cursor:pointer;border:2px solid transparent;transition:all .15s}
+.signup-slot.available{background:var(--warm-white);border-color:var(--teal);color:var(--teal)}
+.signup-slot.available:hover{background:var(--teal);color:white}
+.signup-slot.mine{background:var(--teal);color:white;cursor:pointer}
+.signup-slot.mine:hover{background:#1f5e55;border-color:#1f5e55}
+.signup-slot.mine .undo-hint{font-size:10px;opacity:.75;margin-left:4px}
+.signup-slot.taken{background:var(--cream);border-color:var(--border);color:var(--slate);cursor:not-allowed;opacity:.5}
+.signup-saving{opacity:.6;pointer-events:none}
+
+/* ── Personal schedule ── */
+.personal-schedule{padding:4px}
+.personal-month{margin-bottom:24px}
+.personal-month-title{font-family:'DM Serif Display',serif;font-size:18px;margin-bottom:10px;color:var(--ink);display:flex;align-items:center;gap:8px}
+.personal-shift-card{display:flex;align-items:center;gap:12px;padding:10px 14px;
+  background:var(--warm-white);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:6px}
+.personal-shift-card.is-today{border-color:var(--teal);background:var(--teal-bg)}
+.personal-shift-card.is-weekend{background:#FDFAF0}
+.personal-date-col{min-width:90px}
+.personal-date-day{font-weight:600;font-size:12px;color:var(--slate)}
+.personal-date-num{font-family:'DM Serif Display',serif;font-size:22px;line-height:1;color:var(--ink)}
+.personal-shift-info{flex:1}
+.personal-shift-time{font-size:16px;font-weight:600;color:var(--ink)}
+.personal-shift-type{font-size:11px;color:var(--slate);margin-top:1px}
+.personal-holiday{font-size:10px;background:var(--accent-bg);color:var(--accent);padding:1px 6px;border-radius:3px}
+.personal-empty{color:var(--slate);font-size:12px;font-style:italic;padding:6px 0}
+
+/* ── Nurse picker ── */
+.nurse-select-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  min-height:60vh;gap:16px;text-align:center;padding:32px}
+.nurse-select-screen h2{font-family:'DM Serif Display',serif;font-size:28px}
+.nurse-grid{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;max-width:600px}
+.nurse-pick-btn{padding:10px 18px;border-radius:20px;border:1px solid var(--border);
+  background:var(--warm-white);cursor:pointer;font-family:inherit;font-size:13px;
+  font-weight:500;transition:all .15s;color:var(--ink)}
+.nurse-pick-btn:hover{border-color:var(--teal);color:var(--teal);background:var(--teal-bg)}
+.nurse-pick-btn.selected{background:var(--teal);color:white;border-color:var(--teal)}
+
+/* ── Coverage legend ── */
+.cov-legend{display:flex;gap:10px;align-items:center;margin-bottom:12px;padding:8px 14px;
+  background:var(--warm-white);border:1px solid var(--border);border-radius:var(--radius);font-size:11px;flex-wrap:wrap}
+
+.tab-content{display:none}.tab-content.active{display:block}::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:var(--cream)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+  /* ── PIN screen ── */
+  #pin-screen {
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    min-height:100vh; gap:20px; padding:32px; text-align:center;
+    background:var(--cream);
+  }
+  .pin-logo { font-family:'DM Serif Display',serif; font-size:32px; color:var(--ink); }
+  .pin-sub  { font-size:13px; color:var(--slate); max-width:280px; }
+  .pin-dots {
+    display:flex; gap:12px; margin:8px 0;
+  }
+  .pin-dot-indicator {
+    width:14px; height:14px; border-radius:50%;
+    border:2px solid var(--border); background:var(--cream);
+    transition:all .2s;
+  }
+  .pin-dot-indicator.filled { background:var(--teal); border-color:var(--teal); }
+  .pin-dot-indicator.error  { background:var(--accent); border-color:var(--accent); animation:shake .3s; }
+  .pin-pad {
+    display:grid; grid-template-columns:repeat(3,1fr);
+    gap:10px; max-width:240px; width:100%;
+  }
+  .pin-btn {
+    background:var(--warm-white); border:1px solid var(--border);
+    border-radius:var(--radius); padding:16px 0;
+    font-family:'DM Serif Display',serif; font-size:24px; cursor:pointer;
+    transition:all .12s; color:var(--ink);
+  }
+  .pin-btn:hover  { background:var(--teal-bg); border-color:var(--teal); }
+  .pin-btn:active { background:var(--teal); color:white; transform:scale(.96); }
+  .pin-btn.del    { font-family:'DM Sans',sans-serif; font-size:16px; }
+  .pin-error { color:var(--accent); font-size:13px; min-height:20px; }
+  @keyframes shake {
+    0%,100%{transform:translateX(0)} 25%{transform:translateX(-6px)} 75%{transform:translateX(6px)}
+  }
+
+</style>
+</head>
+<body>
+
+<!-- PIN screen -->
+<div id="pin-screen" style="display:none">
+  <div class="pin-logo">🔒 Dienstplan</div>
+  <p class="pin-sub">Bitte gib die PIN ein, um den Dienstplan zu öffnen.</p>
+  <div class="pin-dots" id="pin-dots">
+    <div class="pin-dot-indicator"></div>
+    <div class="pin-dot-indicator"></div>
+    <div class="pin-dot-indicator"></div>
+    <div class="pin-dot-indicator"></div>
+  </div>
+  <div class="pin-error" id="pin-error"></div>
+  <div class="pin-pad">
+    <button class="pin-btn" onclick="pinInput('1')">1</button>
+    <button class="pin-btn" onclick="pinInput('2')">2</button>
+    <button class="pin-btn" onclick="pinInput('3')">3</button>
+    <button class="pin-btn" onclick="pinInput('4')">4</button>
+    <button class="pin-btn" onclick="pinInput('5')">5</button>
+    <button class="pin-btn" onclick="pinInput('6')">6</button>
+    <button class="pin-btn" onclick="pinInput('7')">7</button>
+    <button class="pin-btn" onclick="pinInput('8')">8</button>
+    <button class="pin-btn" onclick="pinInput('9')">9</button>
+    <button class="pin-btn del" onclick="pinInput('del')">⌫</button>
+    <button class="pin-btn" onclick="pinInput('0')">0</button>
+    <button class="pin-btn del" onclick="pinInput('clr')">✕</button>
+  </div>
+</div>
+
+<!-- Loading screen -->
+<div id="loading-screen">
+  <div class="spinner"></div>
+  <div style="font-family:'DM Serif Display',serif;font-size:22px">Dienstplan wird geladen…</div>
+  <div style="font-size:13px;color:var(--slate)" id="load-status">Verbindung zu JSONbin…</div>
+</div>
+
+<!-- Error screen -->
+<div id="error-screen" style="display:none">
+  <div class="error-icon">⚠️</div>
+  <div style="font-family:'DM Serif Display',serif;font-size:22px">Fehler beim Laden</div>
+  <div style="font-size:13px;color:var(--slate);max-width:400px;line-height:1.6" id="error-msg">
+    Der Dienstplan konnte nicht geladen werden.
+  </div>
+  <div style="font-size:12px;color:var(--slate);margin-top:8px">
+    Bitte die Verantwortliche kontaktieren.
+  </div>
+</div>
+
+<!-- Nurse selection screen (shown before picking a name) -->
+<div id="nurse-select-screen" style="display:none;flex-direction:column;align-items:center;justify-content:center;min-height:100vh">
+  <div class="nurse-select-screen">
+    <div style="font-size:32px">👩‍⚕️</div>
+    <h2>Wer bist du?</h2>
+    <p style="font-size:13px;color:var(--slate)">Wähle deinen Namen, um deinen persönlichen Dienstplan zu sehen.</p>
+    <div class="nurse-grid" id="nurse-select-grid"></div>
+  </div>
+</div>
+
+<!-- Main app (shown after nurse is selected) -->
+<div id="app">
+  <header class="app-header">
+    <h1>Mein Dienstplan</h1>
+    <div class="header-tabs">
+      <button class="header-tab active" onclick="showTab('plan',this)">Monatsübersicht</button>
+      <button class="header-tab" id="myplan-tab-btn" onclick="showTab('myplan',this)">📋 Mein Plan</button>
+      <button class="header-tab" id="signup-tab-btn" onclick="showTab('signup',this)" style="display:none">✋ Freie Dienste</button>
+    </div>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+      <span class="nurse-badge" id="header-nurse-name">—</span>
+      <button style="background:none;border:1px solid rgba(255,255,255,.3);color:rgba(255,255,255,.7);
+        padding:3px 8px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:11px"
+        onclick="switchNurse()">wechseln</button>
+    </div>
+  </header>
+
+  <div class="app-body">
+    <!-- TAB: MONATSÜBERSICHT -->
+    <div id="tab-plan" class="tab-content active">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:8px">
+        <div class="month-nav">
+          <button class="btn-icon" id="btn-prev" onclick="changeMonth(-1)">←</button>
+          <h2 id="month-title">—</h2>
+          <button class="btn-icon" id="btn-next" onclick="changeMonth(1)">→</button>
+        </div>
+        <div style="display:flex;background:var(--cream);border:1px solid var(--border);border-radius:var(--radius-sm);padding:2px;gap:2px">
+          <button id="view-toggle-cal" class="view-toggle-btn active" onclick="setView('calendar')" title="Kalenderansicht">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style="display:block"><rect x="1" y="2" width="12" height="11" rx="1.5" stroke="currentColor" stroke-width="1.3"/><path d="M1 5h12" stroke="currentColor" stroke-width="1.3"/><path d="M4.5 1v2M9.5 1v2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><rect x="3" y="7" width="2" height="2" rx=".4" fill="currentColor"/><rect x="6" y="7" width="2" height="2" rx=".4" fill="currentColor"/><rect x="9" y="7" width="2" height="2" rx=".4" fill="currentColor"/><rect x="3" y="10" width="2" height="1.2" rx=".3" fill="currentColor"/><rect x="6" y="10" width="2" height="1.2" rx=".3" fill="currentColor"/></svg>
+          </button>
+          <button id="view-toggle-tbl" class="view-toggle-btn" onclick="setView('table')" title="Tabellenansicht">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style="display:block"><rect x="1" y="1" width="12" height="12" rx="1.5" stroke="currentColor" stroke-width="1.3"/><path d="M1 4.5h12M1 8h12M1 11.5h12" stroke="currentColor" stroke-width="1.1"/><path d="M4.5 1v12M9.5 1v12" stroke="currentColor" stroke-width="1.1"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="stats-grid" id="month-stats"></div>
+
+      <div class="cov-legend">
+        <span style="font-weight:600;color:var(--slate);font-size:10px;text-transform:uppercase;letter-spacing:.5px;margin-right:4px">Abdeckung 8–22 Uhr:</span>
+        <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:#22C55E;flex-shrink:0"></span>Vollständig</span>
+        <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:#EAB308;flex-shrink:0"></span>Lücke</span>
+        <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:#F43F5E;flex-shrink:0"></span>Unbesetzt</span>
+        <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:var(--teal);flex-shrink:0"></span>Meine Dienste</span>
+        <span style="color:var(--slate);font-size:10px">· Nachtdienste nicht gezählt</span>
+      </div>
+
+      <div class="panel">
+        <div id="view-calendar" class="calendar-wrapper">
+          <div id="calendar-grid" class="calendar-grid"></div>
+        </div>
+        <div id="view-table" style="display:none;overflow-x:auto">
+          <div id="table-grid"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: MEIN PLAN -->
+    <div id="tab-myplan" class="tab-content">
+      <h2 style="font-family:'DM Serif Display',serif;font-size:22px;margin-bottom:4px">Mein Dienstplan</h2>
+      <p style="font-size:12px;color:var(--slate);margin-bottom:16px" id="my-plan-subtitle">—</p>
+      <div id="personal-schedule" class="personal-schedule"></div>
+    </div>
+
+    <!-- TAB: FREIE DIENSTE -->
+    <div id="tab-signup" class="tab-content">
+      <div id="signup-view"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// READ-ONLY NURSE VIEW — no embedded data, loads exclusively from JSONbin
+// ─────────────────────────────────────────────────────────────────────────────
+
+const MONTHS_DE = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+const DAYS_DE   = ['So','Mo','Di','Mi','Do','Fr','Sa'];
+const DAYS_FULL = ['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'];
+const DAY_START = 8 * 60;
+const DAY_END   = 22 * 60;
+
+// State — populated from cloud only
+let state = { nurses: [], shiftTypes: [], assignments: {}, viewYear: 0, viewMonth: 0 };
+let selectedNurseId = null;
+let currentView = 'calendar';
+let writeToken = '';        // GitHub write token (from daten.json, set by admin)
+let signupYear = null;      // from ?monat= URL param
+let signupMonth = null;
+let signupLinkExpiry = null; // from ?exp= URL param (timestamp, ms)
+
+// ══ KONFIGURATION ════════════════════════════════════════════════════════════
+// Die Dienstplan-Daten liegen aus Datenschutzgründen in einem PRIVATEN Repository.
+// Zugriff nur mit Zugangsschlüssel (Fine-grained Token, nur Lesen), den jede
+// Pflegekraft einmalig eingibt. Er wird nur lokal auf dem Gerät gespeichert.
+const DATA_REPO = 'Webervik/dispo-daten';
+const API_DATA_URL = 'https://api.github.com/repos/' + DATA_REPO + '/contents/daten.json';
+const READ_TOKEN_KEY = 'dispo_zugangsschluessel';
+function getReadToken() { return (localStorage.getItem(READ_TOKEN_KEY) || '').trim(); }
+async function fetchPlan() {
+  const token = getReadToken();
+  if (!token) { const err = new Error('Kein Zugangsschlüssel'); err.needsKey = true; throw err; }
+  const r = await fetch(API_DATA_URL + '?t=' + Date.now(), {
+    headers: { 'Accept': 'application/vnd.github.raw+json', 'Authorization': 'Bearer ' + token },
+    cache: 'no-store'
+  });
+  if (r.status === 401 || r.status === 403 || r.status === 404) {
+    const err = new Error('Zugangsschlüssel ungültig oder abgelaufen');
+    err.needsKey = true; err.httpStatus = r.status; throw err;
+  }
+  if (!r.ok) { const err = new Error('HTTP ' + r.status); err.httpStatus = r.status; throw err; }
+  return await r.json();
+}
+
+// Vollbild-Dialog zur einmaligen Eingabe des Zugangsschlüssels
+function showKeyGate(message) {
+  const ls = document.getElementById('loading-screen');
+  if (ls) ls.style.display = 'none';
+  const old = document.getElementById('key-gate');
+  if (old) old.remove();
+  const div = document.createElement('div');
+  div.id = 'key-gate';
+  div.style.cssText = 'position:fixed;inset:0;background:#f4f1ea;z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  div.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:28px;max-width:420px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,.12);text-align:center">
+      <div style="font-size:2rem;margin-bottom:8px">🔐</div>
+      <h2 style="margin:0 0 8px;font-size:1.2rem">Zugangsschlüssel benötigt</h2>
+      <p style="color:#666;font-size:.9rem;margin:0 0 16px;line-height:1.5">${message || 'Der Dienstplan ist geschützt. Bitte einmalig den Zugangsschlüssel eingeben, den du von Viktor bekommen hast. Er wird nur auf diesem Gerät gespeichert.'}</p>
+      <input id="key-gate-input" type="password" placeholder="github_pat_…" autocomplete="off"
+        style="width:100%;padding:12px;border:1.5px solid #ddd;border-radius:10px;font-size:.95rem;box-sizing:border-box">
+      <button onclick="saveKeyGate()"
+        style="margin-top:12px;width:100%;padding:12px;border:none;border-radius:10px;background:#2D6A4F;color:#fff;font-size:1rem;font-weight:600;cursor:pointer">Speichern und laden</button>
+    </div>`;
+  document.body.appendChild(div);
+  const inp = document.getElementById('key-gate-input');
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter') saveKeyGate(); });
+  setTimeout(() => inp.focus(), 100);
+}
+function saveKeyGate() {
+  const v = (document.getElementById('key-gate-input').value || '').trim();
+  if (!v) return;
+  localStorage.setItem(READ_TOKEN_KEY, v);
+  location.reload();
+}
+// Signup-Token: GitHub Personal Access Token mit Contents: Read & write
+// Einen zweiten Token (getrennt vom Admin-Token) erstellen und hier eintragen.
+const SIGNUP_TOKEN = '';   // ← github_pat_... hier eintragen
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function dateKey(y, m, d) {
+  return y + '-' + String(m+1).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+}
+function parseKey(k) { const [y,m,d] = k.split('-').map(Number); return {year:y, month:m-1, day:d}; }
+function getAssignments(k) { return state.assignments[k] || []; }
+function getNurse(id) { return state.nurses.find(n => n.id === id); }
+function getShiftType(id) { return state.shiftTypes.find(s => s.id === id); }
+function isWeekend(d) { return d.getDay() === 0 || d.getDay() === 6; }
+function shiftDuration(s, e) {
+  const [sh,sm] = s.split(':').map(Number); const [eh,em] = e.split(':').map(Number);
+  let d = (eh*60+em) - (sh*60+sm); if (d < 0) d += 1440; return d / 60;
+}
+function getISOWeek(d) {
+  const x = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dw = x.getUTCDay() || 7; x.setUTCDate(x.getUTCDate() + 4 - dw);
+  const ys = new Date(Date.UTC(x.getUTCFullYear(), 0, 1));
+  return Math.ceil((((x - ys) / 86400000) + 1) / 7);
+}
+function getPublicHolidays(year) {
+  const a=year%19,b=Math.floor(year/100),c=year%100,d=Math.floor(b/4),e=b%4,
+    f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30,
+    i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451),
+    mo=Math.floor((h+l-7*m+114)/31),dy=((h+l-7*m+114)%31)+1;
+  const easter = new Date(year, mo-1, dy);
+  function ad(d,n){const r=new Date(d);r.setDate(r.getDate()+n);return r}
+  function fmt(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+  const h2={};
+  const add=(date,name)=>{h2[fmt(date)]=name};
+  add(new Date(year,0,1),'Neujahr');
+  add(ad(easter,-2),'Karfreitag'); add(easter,'Ostersonntag'); add(ad(easter,1),'Ostermontag');
+  add(new Date(year,4,1),'Tag der Arbeit');
+  add(ad(easter,39),'Christi Himmelfahrt'); add(ad(easter,49),'Pfingstsonntag'); add(ad(easter,50),'Pfingstmontag');
+  add(new Date(year,9,3),'Tag der Einheit');
+  add(new Date(year,11,25),'1. Weihnachtstag'); add(new Date(year,11,26),'2. Weihnachtstag');
+  add(new Date(year,2,8),'Frauentag (Berlin)');
+  return h2;
+}
+function timeToMin(t) { const [h,m]=t.split(':').map(Number); return h*60+m; }
+function shiftInterval(a) {
+  const st = getShiftType(a.shiftTypeId);
+  let s = timeToMin(a.customStart || st?.start || '08:00');
+  let e = timeToMin(a.customEnd   || st?.end   || '15:00');
+  if (e <= s) e += 1440; return [s, e];
+}
+function isDaytimeShift(a) {
+  const [s,e] = shiftInterval(a);
+  return !(s >= DAY_END || e <= DAY_START);
+}
+function getDayCoverage(key) {
+  const assigns = getAssignments(key).filter(a => !a.vacation && isDaytimeShift(a));
+  if (!assigns.length) return { status:'none', gaps:[[DAY_START,DAY_END]], coveredMin:0 };
+  const intervals = assigns.map(a => {
+    const [s,e] = shiftInterval(a);
+    return [Math.max(s,DAY_START), Math.min(e,DAY_END)];
+  }).filter(([s,e]) => s < e);
+  if (!intervals.length) return { status:'none', gaps:[[DAY_START,DAY_END]], coveredMin:0 };
+  intervals.sort((a,b)=>a[0]-b[0]);
+  const merged = [intervals[0].slice()];
+  for (let i=1;i<intervals.length;i++){
+    const last=merged[merged.length-1];
+    if(intervals[i][0]<=last[1]) last[1]=Math.max(last[1],intervals[i][1]);
+    else merged.push(intervals[i].slice());
+  }
+  const gaps=[]; let pos=DAY_START;
+  for(const[s,e] of merged){if(s>pos)gaps.push([pos,s]);pos=e;}
+  if(pos<DAY_END)gaps.push([pos,DAY_END]);
+  const coveredMin=merged.reduce((sum,[s,e])=>sum+(e-s),0);
+  return { status:gaps.length?'partial':'full', gaps, coveredMin };
+}
+function minToTime(m) { return `${Math.floor(m/60).toString().padStart(2,'0')}:${(m%60).toString().padStart(2,'0')}`; }
+
+// ── Month guard (current + 2 ahead only) ─────────────────────────────────────
+function clampMonth(y, m) {
+  const now = new Date();
+  const curY = now.getFullYear(), curM = now.getMonth();
+  const diff = (y - curY) * 12 + (m - curM);
+  if (diff < 0) { y = curY; m = curM; }
+  if (diff > 2) { let nm = curM + 2; let ny = curY; if(nm>11){nm-=12;ny++;} y=ny; m=nm; }
+  return [y, m];
+}
+
+function changeMonth(delta) {
+  let y = state.viewYear, m = state.viewMonth + delta;
+  if (m < 0) { m = 11; y--; } if (m > 11) { m = 0; y++; }
+  [y, m] = clampMonth(y, m);
+  state.viewYear = y; state.viewMonth = m;
+  updateNavButtons();
+  renderCalendar();
+}
+
+function updateNavButtons() {
+  const now = new Date();
+  const diff = (state.viewYear - now.getFullYear()) * 12 + (state.viewMonth - now.getMonth());
+  document.getElementById('btn-prev').disabled = diff <= 0;
+  document.getElementById('btn-next').disabled = diff >= 2;
+}
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+function showTab(tab, btn) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.header-tab').forEach(el => el.classList.remove('active'));
+  const tabEl = document.getElementById('tab-' + tab);
+  if (tabEl) tabEl.classList.add('active');
+  if (btn) btn.classList.add('active');
+  if (tab === 'myplan') renderPersonalSchedule();
+  if (tab === 'plan')   renderCalendar();
+  if (tab === 'signup') renderSignupView();
+}
+
+// ── View toggle ───────────────────────────────────────────────────────────────
+function setView(v) {
+  currentView = v;
+  document.getElementById('view-calendar').style.display = v === 'calendar' ? '' : 'none';
+  document.getElementById('view-table').style.display    = v === 'table'    ? '' : 'none';
+  document.getElementById('view-toggle-cal').classList.toggle('active', v === 'calendar');
+  document.getElementById('view-toggle-tbl').classList.toggle('active', v === 'table');
+  if (v === 'table') renderTableView();
+}
+
+// ── Calendar rendering ────────────────────────────────────────────────────────
+function renderCalendar() {
+  const {viewYear:Y, viewMonth:M} = state;
+  document.getElementById('month-title').textContent = MONTHS_DE[M] + ' ' + Y;
+  renderMonthStats(Y, M);
+  const grid = document.getElementById('calendar-grid');
+  grid.innerHTML = '';
+  const emptyH = document.createElement('div'); emptyH.className = 'cal-header-empty'; grid.appendChild(emptyH);
+  DAYS_DE.forEach(d => { const h=document.createElement('div'); h.className='cal-header-day'; h.textContent=d; grid.appendChild(h); });
+  const firstDay=new Date(Y,M,1), lastDay=new Date(Y,M+1,0);
+  const startDow=firstDay.getDay(), totalDays=lastDay.getDate();
+  const numWeeks=Math.ceil((startDow+totalDays)/7);
+  const holidays={...getPublicHolidays(Y),...getPublicHolidays(Y+1)};
+  const today=new Date();
+  for(let w=0;w<numWeeks;w++){
+    const rl=document.createElement('div'); rl.className='cal-row-label';
+    const ws=new Date(firstDay); ws.setDate(1-startDow+w*7);
+    rl.innerHTML='<span style="font-weight:700;color:var(--ink)">KW</span><span style="font-size:13px;color:var(--teal);font-weight:600">'+getISOWeek(ws)+'</span>';
+    grid.appendChild(rl);
+    for(let d=0;d<7;d++){
+      const di=w*7+d-startDow+1;
+      const cell=document.createElement('div'); cell.className='cal-cell';
+      let cellDate=null;
+      if(di<1||di>totalDays){
+        cell.classList.add('other-month');
+        const adj=new Date(Y,M,di);
+        cell.dataset.key=dateKey(adj.getFullYear(),adj.getMonth(),adj.getDate());
+        cellDate=adj;
+      } else {
+        cellDate=new Date(Y,M,di);
+        const key=dateKey(Y,M,di); cell.dataset.key=key;
+        if(isWeekend(cellDate)) cell.classList.add('weekend');
+        if(cellDate.toDateString()===today.toDateString()) cell.classList.add('today');
+        const cov=getDayCoverage(key);
+        cell.classList.add('cov-'+cov.status);
+        // Mark if I have a shift today
+        const myShift=getAssignments(key).some(a=>a.nurseId===selectedNurseId&&!a.vacation);
+        if(myShift) cell.classList.add('my-shift');
+      }
+      if(cellDate){
+        const key=cell.dataset.key;
+        const assigns=getAssignments(key);
+        const hn=holidays[key];
+        const dn=document.createElement('div'); dn.className='day-number';
+        dn.textContent=cellDate.getDate();
+        if(hn){const hb=document.createElement('span');hb.className='holiday-badge';hb.textContent=hn.substring(0,6);hb.title=hn;dn.appendChild(hb)}
+        cell.appendChild(dn);
+        // Show only non-vacation shifts
+        assigns.filter(a=>!a.vacation).forEach(a=>{
+          const nurse=getNurse(a.nurseId); if(!nurse) return;
+          const st=getShiftType(a.shiftTypeId);
+          const chip=document.createElement('div');
+          const isMe=a.nurseId===selectedNurseId;
+          chip.className='shift-chip'+(isMe?' mine':'');
+          const startT=a.customStart||st?.start||'?', endT=a.customEnd||st?.end||'?';
+          chip.innerHTML=`<span class="chip-name">${nurse.name.split(' ')[0]}</span><span class="chip-time">${startT}–${endT}</span>`;
+          cell.appendChild(chip);
+        });
+        if(!cell.classList.contains('other-month')){
+          const cov=getDayCoverage(key);
+          if(cov.status==='none'){
+            const gl=document.createElement('div'); gl.className='gap-label-none'; gl.textContent='8–22 frei'; cell.appendChild(gl);
+          } else if(cov.status==='partial'){
+            cov.gaps.forEach(([gs,ge])=>{
+              const gl=document.createElement('div'); gl.className='gap-label';
+              gl.textContent=`Lücke ${minToTime(gs)}–${minToTime(ge)}`; cell.appendChild(gl);
+            });
+          }
+          const bar=document.createElement('div'); bar.className=`cov-bar cov-bar-${cov.status}`; cell.appendChild(bar);
+        }
+      }
+      grid.appendChild(cell);
+    }
+  }
+  if(currentView==='table') renderTableView();
+}
+
+function renderMonthStats(Y, M) {
+  const last=new Date(Y,M+1,0).getDate();
+  let total=0,hours=0,unoccupied=0,myShifts=0,myHours=0;
+  for(let d=1;d<=last;d++){
+    const key=dateKey(Y,M,d);
+    const active=getAssignments(key).filter(a=>!a.vacation);
+    const cov=getDayCoverage(key);
+    if(cov.status!=='full') unoccupied++;
+    active.forEach(a=>{
+      const st=getShiftType(a.shiftTypeId); if(!st) return;
+      total++; hours+=shiftDuration(a.customStart||st.start,a.customEnd||st.end);
+      if(a.nurseId===selectedNurseId){ myShifts++; myHours+=shiftDuration(a.customStart||st.start,a.customEnd||st.end); }
+    });
+  }
+  document.getElementById('month-stats').innerHTML=
+    `<div class="stat-card"><div class="stat-label">Meine Dienste</div><div class="stat-value" style="color:var(--teal)">${myShifts}</div><div class="stat-sub">${Math.round(myHours)} Stunden</div></div>`+
+    `<div class="stat-card"><div class="stat-label">Dienste gesamt</div><div class="stat-value">${total}</div><div class="stat-sub">${Math.round(hours)} Stunden</div></div>`+
+    `<div class="stat-card"><div class="stat-label">Tage mit Lücke</div><div class="stat-value" style="color:${unoccupied>0?'var(--accent)':'var(--teal)'}">${unoccupied}</div><div class="stat-sub">8–22 Uhr</div></div>`;
+}
+
+// ── Table view ────────────────────────────────────────────────────────────────
+function renderTableView() {
+  const {viewYear:Y, viewMonth:M}=state;
+  const last=new Date(Y,M+1,0).getDate();
+  const today=new Date(), holidays={...getPublicHolidays(Y),...getPublicHolidays(Y+1)};
+  const activeNurses=state.nurses.filter(n=>n.active);
+  let html='<table class="disp-table"><thead><tr>';
+  html+='<th class="col-date">Datum</th>';
+  activeNurses.forEach(n=>{
+    const isMe=n.id===selectedNurseId;
+    html+=`<th${isMe?' class="col-me"':''}>${n.name.split(' ')[0]}${isMe?' ✓':''}</th>`;
+  });
+  html+='</tr></thead><tbody>';
+  for(let d=1;d<=last;d++){
+    const key=dateKey(Y,M,d); const date=new Date(Y,M,d);
+    const dow=date.getDay(), isWE=dow===0||dow===6;
+    const isToday=date.toDateString()===today.toDateString();
+    const hn=holidays[key]; const cov=getDayCoverage(key);
+    let rowCls=isToday?'row-today':hn?'row-holiday':isWE?'row-weekend':'';
+    html+=`<tr class="${rowCls}">`;
+    html+=`<td class="col-date"><span class="cov-dot cov-dot-${cov.status}"></span><strong>${DAYS_DE[dow]} ${d}.</strong>${hn?` <span style="font-size:9px;color:var(--accent)">${hn}</span>`:''}${cov.status==='partial'?` <span style="font-size:9px;color:#B45309">${cov.gaps.map(([s,e])=>minToTime(s)+'–'+minToTime(e)).join(', ')}</span>`:''}</td>`;
+    activeNurses.forEach(n=>{
+      const isMe=n.id===selectedNurseId;
+      const myAssigns=getAssignments(key).filter(a=>a.nurseId===n.id&&!a.vacation);
+      html+=`<td>`;
+      myAssigns.forEach(a=>{
+        const st=getShiftType(a.shiftTypeId);
+        const s=a.customStart||st?.start||'?', e=a.customEnd||st?.end||'?';
+        html+=`<span class="tbl-shift${isMe?' mine':''}">${s}–${e}</span> `;
+      });
+      html+=`</td>`;
+    });
+    html+='</tr>';
+  }
+  html+='</tbody></table>';
+  document.getElementById('table-grid').innerHTML=html;
+}
+
+// ── Personal schedule ─────────────────────────────────────────────────────────
+function renderPersonalSchedule() {
+  const el=document.getElementById('personal-schedule');
+  const sub=document.getElementById('my-plan-subtitle');
+  if(!el||!selectedNurseId) return;
+  const nurse=getNurse(selectedNurseId);
+  if(sub) sub.textContent=nurse?.name+' · alle künftigen Dienste';
+  const today=new Date();
+  const holidays={...getPublicHolidays(today.getFullYear()),...getPublicHolidays(today.getFullYear()+1),...getPublicHolidays(today.getFullYear()+2)};
+  let html='';
+  // Zeige alle Monate von jetzt bis 18 Monate in der Zukunft
+  for(let offset=0;offset<18;offset++){
+    let y=today.getFullYear(), m=today.getMonth()+offset;
+    while(m>11){m-=12;y++;}
+    const last=new Date(y,m+1,0).getDate();
+    const shifts=[];
+    for(let d=1;d<=last;d++){
+      const key=dateKey(y,m,d);
+      getAssignments(key).filter(a=>a.nurseId===selectedNurseId&&!a.vacation).forEach(a=>shifts.push({d,key,a,date:new Date(y,m,d)}));
+    }
+    html+=`<div class="personal-month">
+      <div class="personal-month-title">${MONTHS_DE[m]} ${y}
+        <span style="font-size:12px;color:var(--slate);font-weight:400">${shifts.length} Dienst${shifts.length!==1?'e':''}</span>
+        <button onclick="exportMonthICS(${y},${m})" title="Monat in Kalender exportieren"
+          style="margin-left:auto;background:var(--teal-bg);color:var(--teal);border:1px solid var(--teal);border-radius:6px;padding:3px 10px;cursor:pointer;font-family:inherit;font-size:11px;font-weight:500">
+          📅 Exportieren</button>
+      </div>`;
+    if(!shifts.length){html+='<p class="personal-empty">Keine Dienste in diesem Monat.</p>';}
+    else shifts.forEach(({d,key,a,date})=>{
+      const dow=date.getDay();
+      const isToday=date.toDateString()===today.toDateString();
+      const isWE=dow===0||dow===6;
+      const hn=holidays[key];
+      const st=getShiftType(a.shiftTypeId);
+      const cardCls=isToday?'is-today':isWE?'is-weekend':'';
+      const startT=a.customStart||st?.start||'?', endT=a.customEnd||st?.end||'?';
+      const dur=shiftDuration(startT,endT);
+      html+=`<div class="personal-shift-card ${cardCls}">
+        <div class="personal-date-col"><div class="personal-date-day">${DAYS_FULL[dow]}</div><div class="personal-date-num">${d}.</div></div>
+        <div class="personal-shift-info"><div class="personal-shift-time">${startT} – ${endT} Uhr</div>
+        <div class="personal-shift-type">${st?.name||'Dienst'} · ${dur}h</div></div>
+        ${hn?`<span class="personal-holiday">${hn}</span>`:''}
+      </div>`;
+    });
+    html+='</div>';
+  }
+  el.innerHTML=html;
+}
+
+// ── Monatlicher ICS-Export ────────────────────────────────────────────────────
+function exportMonthICS(Y, M) {
+  if(!selectedNurseId) return;
+  const nurse=getNurse(selectedNurseId);
+  const lines=[
+    'BEGIN:VCALENDAR','VERSION:2.0',
+    `PRODID:-//Pflegedisposition 2026//DE`,
+    `X-WR-CALNAME:Dienstplan ${nurse?.name||''} – ${MONTHS_DE[M]} ${Y}`,
+    'CALSCALE:GREGORIAN','METHOD:PUBLISH',
+  ];
+  function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,8)}
+  function icsDate(dateObj,time){
+    const y=dateObj.getFullYear(),mo=String(dateObj.getMonth()+1).padStart(2,'0'),d=String(dateObj.getDate()).padStart(2,'0');
+    const[h,min]=time.split(':'); return `${y}${mo}${d}T${h}${min}00`;
+  }
+  const last=new Date(Y,M+1,0).getDate();
+  for(let d=1;d<=last;d++){
+    const key=dateKey(Y,M,d);
+    const date=new Date(Y,M,d);
+    getAssignments(key).filter(a=>a.nurseId===selectedNurseId&&!a.vacation).forEach(a=>{
+      const st=getShiftType(a.shiftTypeId);
+      const startT=a.customStart||st?.start||'08:00', endT=a.customEnd||st?.end||'15:00';
+      let endDate=new Date(date);
+      const[sh,sm]=startT.split(':').map(Number),[eh,em]=endT.split(':').map(Number);
+      if(eh<sh||(eh===sh&&em<sm)) endDate.setDate(endDate.getDate()+1);
+      lines.push('BEGIN:VEVENT',`UID:${uid()}@pflegedispo`,
+        `DTSTAMP:${icsDate(new Date(),new Date().toTimeString().slice(0,5))}`,
+        `DTSTART:${icsDate(date,startT)}`,`DTEND:${icsDate(endDate,endT)}`,
+        `SUMMARY:Dienst ${startT}–${endT} Uhr`,`DESCRIPTION:${st?.name||'Dienst'}`,
+        'END:VEVENT');
+    });
+  }
+  lines.push('END:VCALENDAR');
+  const blob=new Blob([lines.join('\r\n')],{type:'text/calendar;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=`Dienstplan_${(nurse?.name||'Plan').replace(/ /g,'_')}_${MONTHS_DE[M]}_${Y}.ics`;
+  a.click(); URL.revokeObjectURL(url);
+  showToast('📅 '+MONTHS_DE[M]+' wird heruntergeladen…');
+}
+
+// ── Freie Dienste: Signup-View ────────────────────────────────────────────────
+const OPEN_SHIFTS = [
+  {id:'fd', label:'FD 08–15', start:'08:00', end:'15:00'},
+  {id:'td', label:'TD 08–22', start:'08:00', end:'22:00'},
+  {id:'sd', label:'SD 15–22', start:'15:00', end:'22:00'},
+];
+
+function shiftOverlaps(s1,e1,s2str,e2str){
+  const s2=timeToMin(s2str); let e2=timeToMin(e2str); if(e2<=s2) e2+=1440;
+  return s1<e2 && s2<e1;
+}
+
+function renderSignupView(){
+  const el=document.getElementById('signup-view');
+  if(!el||signupYear===null) return;
+  const Y=signupYear, M=signupMonth;
+  const nurse=getNurse(selectedNurseId);
+  const last=new Date(Y,M+1,0).getDate();
+  const holidays={...getPublicHolidays(Y),...getPublicHolidays(Y+1)};
+  const today=new Date();
+
+  if(!writeToken){
+    el.innerHTML=`<div style="text-align:center;padding:40px;color:var(--slate)">
+      <div style="font-size:32px;margin-bottom:8px">🔒</div>
+      <div style="font-family:'DM Serif Display',serif;font-size:18px">Eintragen nicht verfügbar</div>
+      <div style="font-size:12px;margin-top:8px">Bitte die Verantwortliche kontaktieren.</div>
+    </div>`;
+    return;
+  }
+
+  if(signupLinkExpiry===null || Date.now()>signupLinkExpiry){
+    el.innerHTML=`<div style="text-align:center;padding:40px;color:var(--slate)">
+      <div style="font-size:32px;margin-bottom:8px">⏰</div>
+      <div style="font-family:'DM Serif Display',serif;font-size:18px">Link abgelaufen</div>
+      <div style="font-size:12px;margin-top:8px">Dieser Eintrage-Link ist nicht mehr gültig. Bitte einen neuen Link bei der Verwaltung anfordern.</div>
+    </div>`;
+    return;
+  }
+
+  let html=`<div class="signup-month-title">Freie Dienste — ${MONTHS_DE[M]} ${Y}</div>
+    <p class="signup-subtitle">Klicke auf einen freien Dienst, um dich einzutragen. Bereits besetzte Dienste sind grau.</p>`;
+
+  let hasAny=false;
+  for(let d=1;d<=last;d++){
+    const key=dateKey(Y,M,d);
+    const date=new Date(Y,M,d);
+    if(date<new Date(today.getFullYear(),today.getMonth(),today.getDate())) continue; // vergangene Tage überspringen
+    const assigns=getAssignments(key).filter(a=>!a.vacation);
+    const dow=date.getDay();
+    const isWE=dow===0||dow===6;
+    const hn=holidays[key];
+    const dayLabel=`${DAYS_FULL[dow]}, ${d}. ${MONTHS_DE[M]}`;
+
+    // Prüfen welche Slots noch frei sind
+    const slots=OPEN_SHIFTS.map(s=>{
+      const sMin=timeToMin(s.start); let eMin=timeToMin(s.end); if(eMin<=sMin) eMin+=1440;
+      // "mine" nur wenn exakt diese Zeiten eingetragen sind
+      const isMine=assigns.some(a=>
+        a.nurseId===selectedNurseId &&
+        (a.customStart||'08:00')===s.start &&
+        (a.customEnd||'22:00')===s.end
+      );
+      // Pflegerin hat anderen Dienst der zeitlich überlappt → Slot sperren ohne "mine" zu zeigen
+      const isBlocked=!isMine&&assigns.some(a=>
+        a.nurseId===selectedNurseId&&shiftOverlaps(sMin,eMin,a.customStart||'08:00',a.customEnd||'15:00')
+      );
+      // Andere Pflegerin belegt diesen Slot
+      const isTaken=!isMine&&!isBlocked&&assigns.some(a=>
+        a.nurseId!==selectedNurseId&&shiftOverlaps(sMin,eMin,a.customStart||'08:00',a.customEnd||'15:00')
+      );
+      return {...s, isMine, isBlocked, isTaken};
+    });
+
+    const allTaken=slots.every(s=>s.isTaken||s.isMine);
+    hasAny=true;
+
+    html+=`<div class="signup-day">
+      <div class="signup-day-header" style="${isWE?'background:var(--gold-bg)':''}">
+        <div>
+          <div class="signup-day-name" style="${isWE?'color:var(--gold)':''}">${dayLabel}${hn?` · <span style="color:var(--accent);font-size:10px">${hn}</span>`:''}</div>
+        </div>
+        ${allTaken?'<span class="signup-day-full">besetzt</span>':''}
+      </div>
+      <div class="signup-slots">`;
+
+    slots.forEach(s=>{
+      if(s.isMine){
+        html+=`<button class="signup-slot mine" onclick="removeSignup('${key}','${s.start}','${s.end}',this)">${s.label} ✓<span class="undo-hint">✕</span></button>`;
+      } else if(s.isBlocked||s.isTaken){
+        html+=`<button class="signup-slot taken" disabled>${s.label}</button>`;
+      } else {
+        html+=`<button class="signup-slot available" onclick="signupForShift('${key}','${s.id}','${s.start}','${s.end}',this)">${s.label}</button>`;
+      }
+    });
+
+    html+=`</div></div>`;
+  }
+
+  if(!hasAny) html+=`<p style="text-align:center;color:var(--slate);padding:40px">Keine offenen Dienste in diesem Monat.</p>`;
+  el.innerHTML=html;
+}
+
+// ── GitHub-Schreiben beim Signup ──────────────────────────────────────────────
+async function signupForShift(key, shiftTypeId, startT, endT, btn){
+  if(!writeToken){ showToast('❌ Kein Schreibzugriff'); return; }
+  if(!selectedNurseId){ showToast('❌ Kein Name gewählt'); return; }
+  if(signupLinkExpiry===null || Date.now()>signupLinkExpiry){
+    showToast('⏰ Link abgelaufen — bitte neuen Link anfordern');
+    renderSignupView();
+    return;
+  }
+
+  btn.classList.add('signup-saving');
+  btn.textContent='⏳ Wird eingetragen…';
+
+  try {
+    // Aktuellen Stand von GitHub laden (für SHA)
+    const GITHUB_REPO='Webervik/dispo-daten';
+    const GITHUB_FILE='daten.json';
+    const apiUrl=`https://api.github.com/repos/${GITHUB_REPO}/contents/${GITHUB_FILE}`;
+
+    const getRes=await fetch(apiUrl+'?t='+Date.now(),{cache:'no-store',headers:{
+      'Authorization':`Bearer ${writeToken}`,'Accept':'application/vnd.github+json'
+    }});
+    if(!getRes.ok) throw new Error('GitHub Lesefehler: '+getRes.status);
+    const getMeta=await getRes.json();
+    const sha=getMeta.sha;
+    if(getMeta.content===undefined||getMeta.content===null) throw new Error('Aktueller Stand nicht ladbar – bitte Seite neu laden und nochmal versuchen.');
+    const currentData=JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(getMeta.content.replace(/\n/g,'')),c=>c.charCodeAt(0))));
+
+    // Prüfen ob Slot noch frei (Refresh-Schutz)
+    const sMin=timeToMin(startT); let eMin=timeToMin(endT); if(eMin<=sMin) eMin+=1440;
+    const existing=(currentData.assignments[key]||[]).filter(a=>!a.vacation);
+    const conflict=existing.some(a=>a.nurseId!==selectedNurseId&&shiftOverlaps(sMin,eMin,a.customStart||'08:00',a.customEnd||'15:00'));
+    if(conflict){
+      showToast('⚠️ Dieser Dienst wurde gerade von jemand anderem belegt.');
+      btn.classList.remove('signup-saving');
+      btn.textContent=btn.dataset.label||shiftTypeId;
+      renderSignupView(); // Ansicht aktualisieren
+      return;
+    }
+
+    // Eintrag hinzufügen
+    if(!currentData.assignments[key]) currentData.assignments[key]=[];
+    currentData.assignments[key].push({
+      nurseId:selectedNurseId, shiftTypeId, customStart:startT, customEnd:endT, vacation:false, note:'', addedAt:new Date().toISOString(), addedBy:'nurse'
+    });
+
+    // Lokalen State auch aktualisieren
+    state.assignments=currentData.assignments;
+
+    // Zurück auf GitHub schreiben
+    const putRes=await fetch(apiUrl,{
+      method:'PUT',
+      headers:{'Authorization':`Bearer ${writeToken}`,'Accept':'application/vnd.github+json','Content-Type':'application/json'},
+      body:JSON.stringify({
+        message:`Dienst eingetragen: ${getNurse(selectedNurseId)?.name} – ${key}`,
+        content:(function(str){ const bytes=new TextEncoder().encode(str); let b=''; bytes.forEach(x=>b+=String.fromCharCode(x)); return btoa(b); })(JSON.stringify(currentData,null,2)),
+        sha,
+        branch:'main'
+      })
+    });
+    if(!putRes.ok){const e=await putRes.json(); throw new Error(e.message||putRes.status);}
+
+    showToast('✅ Eingetragen!');
+    renderSignupView(); // Ansicht neu aufbauen
+
+  } catch(e){
+    showToast('❌ Fehler: '+e.message);
+    btn.classList.remove('signup-saving');
+    btn.textContent=shiftTypeId.toUpperCase();
+    console.error(e);
+  }
+}
+
+// ── Dienst wieder abmelden ───────────────────────────────────────────────────
+async function removeSignup(key, startT, endT, btn){
+  if(!writeToken){ showToast('❌ Kein Schreibzugriff'); return; }
+  btn.textContent='⏳ …';
+  btn.disabled=true;
+
+  try {
+    const GITHUB_REPO='webervik/personaldispo';
+    const GITHUB_FILE='daten.json';
+    const apiUrl=`https://api.github.com/repos/${GITHUB_REPO}/contents/${GITHUB_FILE}`;
+
+    const getRes=await fetch(apiUrl+'?t='+Date.now(),{cache:'no-store',headers:{
+      'Authorization':`Bearer ${writeToken}`,'Accept':'application/vnd.github+json'
+    }});
+    if(!getRes.ok) throw new Error('GitHub Lesefehler: '+getRes.status);
+    const getMeta=await getRes.json();
+    const sha=getMeta.sha;
+    if(getMeta.content===undefined||getMeta.content===null) throw new Error('Aktueller Stand nicht ladbar – bitte Seite neu laden und nochmal versuchen.');
+    const currentData=JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(getMeta.content.replace(/\n/g,'')),c=>c.charCodeAt(0))));
+
+    // Genau diesen Eintrag entfernen (Pflegerin + exakte Zeiten)
+    if(currentData.assignments[key]){
+      currentData.assignments[key]=currentData.assignments[key].filter(a=>
+        !(a.nurseId===selectedNurseId &&
+          (a.customStart||'08:00')===startT &&
+          (a.customEnd||'22:00')===endT)
+      );
+    }
+    state.assignments=currentData.assignments;
+
+    const putRes=await fetch(apiUrl,{
+      method:'PUT',
+      headers:{'Authorization':`Bearer ${writeToken}`,'Accept':'application/vnd.github+json','Content-Type':'application/json'},
+      body:JSON.stringify({
+        message:`Dienst abgemeldet: ${getNurse(selectedNurseId)?.name} – ${key}`,
+        content:(function(str){ const bytes=new TextEncoder().encode(str); let b=''; bytes.forEach(x=>b+=String.fromCharCode(x)); return btoa(b); })(JSON.stringify(currentData,null,2)),
+        sha,
+        branch:'main'
+      })
+    });
+    if(!putRes.ok){const e=await putRes.json(); throw new Error(e.message||putRes.status);}
+
+    showToast('↩️ Abgemeldet');
+    renderSignupView();
+  } catch(e){
+    showToast('❌ Fehler: '+e.message);
+    btn.disabled=false;
+    renderSignupView();
+    console.error(e);
+  }
+}
+
+// ── Nurse selection ───────────────────────────────────────────────────────────
+function showNurseSelect() {
+  document.getElementById('loading-screen').style.display='none';
+  document.getElementById('app').classList.remove('visible');
+  document.getElementById('nurse-select-screen').style.display='flex';
+  const grid=document.getElementById('nurse-select-grid');
+  grid.innerHTML=state.nurses.filter(n=>n.active).map(n=>
+    `<button class="nurse-pick-btn" onclick="pickNurse('${n.id}')">${n.name}</button>`
+  ).join('');
+}
+
+function pickNurse(id) {
+  try {
+    selectedNurseId = id;
+    const nurse = getNurse(id);
+    sessionStorage.setItem('pflegedispo_nurse_id', id);
+
+    // Hide nurse selection
+    document.getElementById('nurse-select-screen').style.display = 'none';
+
+    // Show app
+    const appEl = document.getElementById('app');
+    appEl.classList.add('visible');
+
+    // Set nurse name in header
+    document.getElementById('header-nurse-name').textContent = nurse?.name || '—';
+
+    // Activate Mein Plan tab directly via classList
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.header-tab').forEach(el => el.classList.remove('active'));
+    const myPlanTab = document.getElementById('tab-myplan');
+    const myPlanBtn = document.getElementById('myplan-tab-btn');
+    if (myPlanTab) myPlanTab.classList.add('active');
+    if (myPlanBtn) myPlanBtn.classList.add('active');
+
+    // Signup-Tab anzeigen und ggf. direkt dorthin
+    if(signupYear!==null){
+      document.getElementById('signup-tab-btn').style.display='';
+      renderSignupView();
+      showTab('signup',document.getElementById('signup-tab-btn'));
+    } else {
+      renderPersonalSchedule();
+    }
+
+  } catch(e) {
+    // Show error visibly on screen
+    document.getElementById('nurse-select-screen').style.display = 'none';
+    document.getElementById('loading-screen').style.display = 'none';
+    document.getElementById('error-screen').style.display = 'flex';
+    document.getElementById('error-msg').textContent = 'Fehler nach Namensauswahl: ' + e.message;
+  }
+}
+
+function switchNurse() {
+  sessionStorage.removeItem('pflegedispo_nurse_id');
+  selectedNurseId = null;
+  document.getElementById('app').classList.remove('visible');
+  showNurseSelect();
+}
+
+
+// ── PIN protection ────────────────────────────────────────────────────────────
+let pinBuffer = '';
+let correctPin = '';   // loaded from cloud data (field: pin)
+
+function showPinScreen() {
+  document.getElementById('loading-screen').style.display = 'none';
+  document.getElementById('pin-screen').style.display    = 'flex';
+  pinBuffer = '';
+  updatePinDots();
+}
+
+function pinInput(val) {
+  const errEl = document.getElementById('pin-error');
+  errEl.textContent = '';
+  if (val === 'del') { pinBuffer = pinBuffer.slice(0,-1); }
+  else if (val === 'clr') { pinBuffer = ''; }
+  else if (pinBuffer.length < 4) { pinBuffer += val; }
+  updatePinDots();
+  if (pinBuffer.length === 4) checkPin();
+}
+
+function updatePinDots() {
+  document.querySelectorAll('.pin-dot-indicator').forEach((dot,i) => {
+    dot.classList.toggle('filled', i < pinBuffer.length);
+    dot.classList.remove('error');
+  });
+}
+
+function checkPin() {
+  if (pinBuffer === correctPin) {
+    // PIN correct — remember for session
+    sessionStorage.setItem('pflegedispo_pin_ok', '1');
+    document.getElementById('pin-screen').style.display = 'none';
+    proceedAfterPin();
+  } else {
+    // Wrong PIN
+    document.querySelectorAll('.pin-dot-indicator').forEach(d => {
+      d.classList.add('error'); d.classList.remove('filled');
+    });
+    document.getElementById('pin-error').textContent = 'Falsche PIN – bitte erneut versuchen';
+    setTimeout(() => { pinBuffer = ''; updatePinDots(); }, 800);
+  }
+}
+
+// Called after PIN is verified (or if no PIN set)
+let _loadedData = null;
+// Repariert mehrfach UTF-8-kodierte Strings (z.B. "GÃ¼lcan" → "Gülcan")
+function fixUtf8(str) {
+  if (typeof str !== 'string') return str;
+  // Wiederhole Reparatur bis der String stabil ist (max. 6 Runden)
+  let prev = str;
+  for (let i = 0; i < 6; i++) {
+    try {
+      const fixed = decodeURIComponent(escape(prev));
+      if (fixed === prev) break; // stabil
+      prev = fixed;
+    } catch(e) { break; }
+  }
+  return prev;
+}
+
+function fixNurseNames(nurses) {
+  return (nurses || []).map(n => ({ ...n, name: fixUtf8(n.name) }));
+}
+function fixShiftTypeNames(types) {
+  return (types || []).map(s => ({ ...s, name: fixUtf8(s.name) }));
+}
+
+function proceedAfterPin() {
+  const s = _loadedData;
+  if (!s) {
+    // _loadedData lost (e.g. page reload after PIN) — reload from cloud
+    document.getElementById('loading-screen').style.display = 'flex';
+    checkDeepLink();
+boot(); return;
+  }
+  state.nurses      = fixNurseNames(s.nurses);
+  state.shiftTypes  = fixShiftTypeNames(s.shiftTypes);
+  state.assignments = s.assignments || {};
+  writeToken        = s.wte ? s.wte.split('').reverse().join('') : (SIGNUP_TOKEN || '');
+
+  if (state.nurses.length === 0) {
+    document.getElementById('loading-screen').style.display = 'none';
+    document.getElementById('error-screen').style.display   = 'flex';
+    document.getElementById('error-msg').textContent =
+      'Keine Pflegerinnen in den Cloud-Daten gefunden. Bitte zuerst in der Admin-App speichern und dann erneut versuchen.';
+    return;
+  }
+
+  const now = new Date();
+  // Check for deep-link date
+  if (window._deepLinkYear && window._deepLinkMonth !== undefined) {
+    const [dy,dm] = clampMonth(window._deepLinkYear, window._deepLinkMonth);
+    state.viewYear  = dy;
+    state.viewMonth = dm;
+  } else {
+    state.viewYear  = now.getFullYear();
+    state.viewMonth = now.getMonth();
+  }
+  updateNavButtons();
+
+  const savedId    = sessionStorage.getItem('pflegedispo_nurse_id');
+  const savedNurse = state.nurses.find(n => n.id === savedId && n.active);
+  if (savedNurse) {
+    selectedNurseId = savedNurse.id;
+    document.getElementById('header-nurse-name').textContent = savedNurse.name;
+    document.getElementById('loading-screen').style.display  = 'none';
+    document.getElementById('app').classList.add('visible');
+    renderCalendar();
+    renderPersonalSchedule();
+    showTab('myplan', document.getElementById('myplan-tab-btn'));
+  } else {
+    showNurseSelect();
+  }
+}
+
+
+// ── ICS Export (personal schedule) ────────────────────────────────────────────
+function exportMyICS() {
+  if (!selectedNurseId) return;
+  const nurse = getNurse(selectedNurseId);
+  const today = new Date();
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    `PRODID:-//Pflegedisposition 2026//DE`,
+    `X-WR-CALNAME:Dienstplan ${nurse?.name || ''}`,
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+  ];
+
+  function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
+  function icsDate(dateObj, time) {
+    const y = dateObj.getFullYear();
+    const m = String(dateObj.getMonth()+1).padStart(2,'0');
+    const d = String(dateObj.getDate()).padStart(2,'0');
+    const [h,min] = time.split(':');
+    return `${y}${m}${d}T${h}${min}00`;
+  }
+
+  // Collect shifts for current + 2 ahead months
+  for (let offset = 0; offset < 3; offset++) {
+    let y = today.getFullYear(), m = today.getMonth() + offset;
+    if (m > 11) { m -= 12; y++; }
+    const last = new Date(y, m+1, 0).getDate();
+    for (let d = 1; d <= last; d++) {
+      const key = dateKey(y, m, d);
+      const date = new Date(y, m, d);
+      getAssignments(key)
+        .filter(a => a.nurseId === selectedNurseId && !a.vacation)
+        .forEach(a => {
+          const st = getShiftType(a.shiftTypeId);
+          const startT = a.customStart || st?.start || '08:00';
+          const endT   = a.customEnd   || st?.end   || '15:00';
+          // Handle overnight: end date may be next day
+          let endDate = new Date(date);
+          const [sh,sm] = startT.split(':').map(Number);
+          const [eh,em] = endT.split(':').map(Number);
+          if (eh < sh || (eh === sh && em < sm)) endDate.setDate(endDate.getDate()+1);
+          lines.push(
+            'BEGIN:VEVENT',
+            `UID:${uid()}@pflegedispo`,
+            `DTSTAMP:${icsDate(new Date(), new Date().toTimeString().slice(0,5))}`,
+            `DTSTART:${icsDate(date, startT)}`,
+            `DTEND:${icsDate(endDate, endT)}`,
+            `SUMMARY:Dienst ${startT}–${endT} Uhr`,
+            `DESCRIPTION:${st?.name || 'Dienst'}`,
+            'END:VEVENT'
+          );
+        });
+    }
+  }
+  lines.push('END:VCALENDAR');
+
+  const blob = new Blob([lines.join('\r\n')], { type: 'text/calendar;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `Dienstplan_${(nurse?.name || 'Plan').replace(/ /g,'_')}.ics`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('📅 Kalender-Datei wird heruntergeladen…');
+}
+
+// ── Deep-link: ?open=YYYY-MM-DD jumps to that month ───────────────────────────
+function checkDeepLink() {
+  const params = new URLSearchParams(window.location.search);
+  // ?open=YYYY-MM → springt zu diesem Monat in der Monatsübersicht
+  const openDate = params.get('open');
+  if (openDate) {
+    const [y,m] = openDate.split('-').map(Number);
+    if (y && m) { window._deepLinkYear = y; window._deepLinkMonth = m - 1; }
+  }
+  // ?monat=YYYY-MM → Freie Dienste für diesen Monat
+  const monatParam = params.get('monat');
+  if (monatParam) {
+    const [y,m] = monatParam.split('-').map(Number);
+    if (y && m) { signupYear = y; signupMonth = m - 1; }
+  }
+  // ?exp=<timestamp> → Link verfällt nach diesem Zeitpunkt (ms seit Epoch)
+  const expParam = params.get('exp');
+  if (expParam) {
+    const exp = Number(expParam);
+    if (!isNaN(exp)) signupLinkExpiry = exp;
+  }
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function showToast(msg) {
+  let t = document.getElementById('toast-msg');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'toast-msg';
+    t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--cream);padding:10px 20px;border-radius:20px;font-size:13px;z-index:9999;pointer-events:none;transition:opacity .3s';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.opacity = '1';
+  clearTimeout(t._to);
+  t._to = setTimeout(() => t.style.opacity = '0', 2500);
+}
+
+// ── Boot sequence ─────────────────────────────────────────────────────────────
+async function boot() {
+  const loadStatus = document.getElementById('load-status');
+  const showError = (msg, detail='') => {
+    document.getElementById('loading-screen').style.display = 'none';
+    document.getElementById('error-screen').style.display   = 'flex';
+    document.getElementById('error-msg').textContent        = msg;
+    if (detail) {
+      const d = document.createElement('div');
+      d.style.cssText = 'font-size:11px;color:#888;margin-top:8px;font-family:monospace;word-break:break-all;max-width:360px';
+      d.textContent = detail;
+      document.getElementById('error-screen').appendChild(d);
+    }
+  };
+
+  loadStatus.textContent = 'Dienstplan wird geladen…';
+
+  try {
+    let data;
+    try {
+      data = await fetchPlan();
+    } catch(loadErr) {
+      if (loadErr.needsKey) {
+        showKeyGate(loadErr.httpStatus
+          ? 'Der gespeicherte Zugangsschlüssel ist ungültig oder abgelaufen. Bitte den aktuellen Schlüssel eingeben (bekommst du von Viktor).'
+          : '');
+        return;
+      }
+      if (loadErr.httpStatus) {
+        showError(`Fehler beim Laden (HTTP ${loadErr.httpStatus})`, 'Bitte die Verantwortliche kontaktieren.');
+      } else {
+        showError('Ungültige Datei auf GitHub.', loadErr.message);
+      }
+      return;
+    }
+
+    if (!data.nurses) {
+      showError('Keine Daten gefunden.', 'Bitte zuerst in der Admin-App speichern und auf GitHub hochladen.'); return;
+    }
+
+    _loadedData = data;
+    correctPin  = data.pin || '';
+
+    loadStatus.textContent = 'Bereit.';
+
+    if (correctPin && sessionStorage.getItem('pflegedispo_pin_ok') !== '1') {
+      showPinScreen();
+    } else {
+      document.getElementById('loading-screen').style.display = 'none';
+      proceedAfterPin();
+    }
+
+  } catch(e) {
+    showError(
+      'Netzwerkfehler — Dienstplan konnte nicht geladen werden.',
+      e.message
+    );
+    console.error(e);
+  }
+}
+
+checkDeepLink();
+boot();
+</script>
+</body>
+</html>
