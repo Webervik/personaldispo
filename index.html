@@ -963,7 +963,9 @@ async function removeSignup(key, startT, endT, btn){
   btn.disabled=true;
 
   try {
-    const GITHUB_REPO='webervik/personaldispo';
+    // WICHTIG: gleiches (privates) Daten-Repo wie beim Eintragen — sonst laufen
+    // Anmeldung und Abmeldung in verschiedene Repos auseinander.
+    const GITHUB_REPO='Webervik/dispo-daten';
     const GITHUB_FILE='daten.json';
     const apiUrl=`https://api.github.com/repos/${GITHUB_REPO}/contents/${GITHUB_FILE}`;
 
