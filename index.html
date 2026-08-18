@@ -156,6 +156,24 @@ body{font-family:'DM Sans',sans-serif;background:var(--cream);color:var(--ink);m
 .signup-slot.pending{background:#FDF6E3;border-color:var(--gold,#B08A2F);color:#8a6a1f;cursor:pointer}
 .signup-slot.pending:hover{background:#F7EBCC}
 .signup-slot .req-note{display:block;font-size:9px;opacity:.8;margin-top:1px;font-weight:400}
+/* Zusammenfassung: wie viele Dienste sind frei? */
+.signup-summary{display:flex;align-items:center;gap:14px;background:var(--teal,#2A7A6F);color:#fff;
+  border-radius:14px;padding:14px 18px;margin:10px 0 12px}
+.signup-summary.leer{background:var(--cream,#F7F3EE);color:var(--slate,#7A7068);border:1px solid var(--border,#E2DAD2)}
+.signup-summary .ss-zahl{font-family:'DM Serif Display',serif;font-size:38px;line-height:1;flex-shrink:0}
+.signup-summary .ss-text{font-size:13.5px;line-height:1.45}
+/* Umschalter für besetzte Tage */
+.signup-filter{display:block;width:100%;margin:0 0 14px;padding:10px;border:1px dashed var(--border,#E2DAD2);
+  background:transparent;border-radius:10px;color:var(--slate,#7A7068);font-family:inherit;font-size:12.5px;cursor:pointer}
+.signup-filter:hover{background:var(--cream,#F7F3EE);color:var(--ink,#1C1814)}
+/* Tage mit freien Diensten hervorheben, besetzte zurücknehmen */
+.signup-day.hat-frei{border:2px solid var(--teal,#2A7A6F);box-shadow:0 2px 10px rgba(42,122,111,.13)}
+.signup-day.ist-voll{opacity:.5}
+.signup-day.ist-voll .signup-slots{padding-top:6px;padding-bottom:6px}
+.signup-day-free{font-size:11px;font-weight:600;color:#fff;background:var(--teal,#2A7A6F);
+  padding:3px 9px;border-radius:10px;white-space:nowrap}
+/* Freie Plätze deutlicher */
+.signup-slot.available{font-weight:600}
 /* Monatsnavigation in der Anfrage-Ansicht */
 .signup-nav{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:4px}
 .signup-nav .signup-month-title{margin-bottom:0}
@@ -395,6 +413,7 @@ let signupYear = null;      // from ?monat= URL param
 let signupMonth = null;
 let signupLinkExpiry = null; // (nicht mehr genutzt — Link läuft nicht mehr ab)
 let _openSignupOnStart = false; // true, wenn ?monat= im Link steht
+let signupOnlyFree = true;      // Standard: nur Tage mit freien Diensten zeigen
 
 // ══ KONFIGURATION ════════════════════════════════════════════════════════════
 // Die Dienstplan-Daten liegen aus Datenschutzgründen in einem PRIVATEN Repository.
@@ -817,7 +836,6 @@ function renderSignupView(){
   const el=document.getElementById('signup-view');
   if(!el||signupYear===null) return;
   const Y=signupYear, M=signupMonth;
-  const nurse=getNurse(selectedNurseId);
   const last=new Date(Y,M+1,0).getDate();
   const holidays={...getPublicHolidays(Y),...getPublicHolidays(Y+1)};
   const today=new Date();
@@ -831,81 +849,111 @@ function renderSignupView(){
     return;
   }
 
-  let html=`<div class="signup-nav">
-      <button class="btn-icon" onclick="changeSignupMonth(-1)">←</button>
-      <div class="signup-month-title">Freie Dienste — ${MONTHS_DE[M]} ${Y}</div>
-      <button class="btn-icon" onclick="changeSignupMonth(1)">→</button>
-    </div>
-    <p class="signup-subtitle">Tippe auf einen freien Dienst, um ihn anzufragen — Viktor meldet sich dann bei dir. 🙂</p>`;
-
-  let hasAny=false;
+  // ── 1. Durchgang: Tage auswerten ──────────────────────────────────────────
+  const tage=[];
   for(let d=1;d<=last;d++){
     const key=dateKey(Y,M,d);
     const date=new Date(Y,M,d);
-    if(date<new Date(today.getFullYear(),today.getMonth(),today.getDate())) continue; // vergangene Tage überspringen
+    if(date<new Date(today.getFullYear(),today.getMonth(),today.getDate())) continue;
     const assigns=getAssignments(key).filter(a=>!a.vacation);
     const dow=date.getDay();
-    const isWE=dow===0||dow===6;
-    const hn=holidays[key];
-    const dayLabel=`${DAYS_FULL[dow]}, ${d}. ${MONTHS_DE[M]}`;
 
-    // Prüfen welche Slots noch frei sind
     const slots=OPEN_SHIFTS.map(s=>{
       const sMin=timeToMin(s.start); let eMin=timeToMin(s.end); if(eMin<=sMin) eMin+=1440;
-      // "mine" nur wenn exakt diese Zeiten eingetragen sind
       const isMine=assigns.some(a=>
         a.nurseId===selectedNurseId &&
         (a.customStart||'08:00')===s.start &&
         (a.customEnd||'22:00')===s.end
       );
-      // Pflegerin hat anderen Dienst der zeitlich überlappt → Slot sperren ohne "mine" zu zeigen
       const isBlocked=!isMine&&assigns.some(a=>
         a.nurseId===selectedNurseId&&shiftOverlaps(sMin,eMin,a.customStart||'08:00',a.customEnd||'15:00')
       );
-      // Andere Pflegerin belegt diesen Slot
       const isTaken=!isMine&&!isBlocked&&assigns.some(a=>
         a.nurseId!==selectedNurseId&&shiftOverlaps(sMin,eMin,a.customStart||'08:00',a.customEnd||'15:00')
       );
-      // Offene Anfragen für diesen Slot
       const reqAdd    = pendingRequestFor(key, s.start, s.end, 'add');
       const reqRemove = pendingRequestFor(key, s.start, s.end, 'remove');
       return {...s, isMine, isBlocked, isTaken, reqAdd, reqRemove};
     });
 
-    const allTaken=slots.every(s=>s.isTaken||s.isMine);
-    hasAny=true;
+    const freie   = slots.filter(s=>!s.isMine&&!s.isBlocked&&!s.isTaken&&!s.reqAdd);
+    const meine   = slots.filter(s=>s.isMine||s.reqAdd||s.reqRemove);
+    tage.push({ d, key, dow, slots, freie, meine,
+                istWE: dow===0||dow===6,
+                feiertag: holidays[key],
+                label: `${DAYS_FULL[dow]}, ${d}. ${MONTHS_DE[M]}` });
+  }
 
-    html+=`<div class="signup-day">
-      <div class="signup-day-header" style="${isWE?'background:var(--gold-bg)':''}">
+  const freieSlots = tage.reduce((n,t)=>n+t.freie.length,0);
+  const freieTage  = tage.filter(t=>t.freie.length>0).length;
+  // Sichtbar: Tage mit freien Diensten + Tage, an denen sie selbst etwas hat
+  const relevant   = tage.filter(t=>t.freie.length>0||t.meine.length>0);
+  const zuZeigen   = signupOnlyFree ? relevant : tage;
+  const versteckt  = tage.length - relevant.length;
+
+  // ── 2. Durchgang: Ausgabe ─────────────────────────────────────────────────
+  let html=`<div class="signup-nav">
+      <button class="btn-icon" onclick="changeSignupMonth(-1)">←</button>
+      <div class="signup-month-title">${MONTHS_DE[M]} ${Y}</div>
+      <button class="btn-icon" onclick="changeSignupMonth(1)">→</button>
+    </div>`;
+
+  // Auffällige Zusammenfassung: wie viel ist überhaupt frei?
+  if(freieSlots>0){
+    html+=`<div class="signup-summary">
+      <div class="ss-zahl">${freieSlots}</div>
+      <div class="ss-text"><strong>${freieSlots===1?'freier Dienst':'freie Dienste'}</strong>
+        an ${freieTage} ${freieTage===1?'Tag':'Tagen'} — tippe einen an, Viktor meldet sich. 🙂</div>
+    </div>`;
+  } else {
+    html+=`<div class="signup-summary leer">
+      <div class="ss-text">In diesem Monat ist gerade alles besetzt. Schau gern im nächsten Monat. 🙂</div>
+    </div>`;
+  }
+
+  if(versteckt>0){
+    html+=`<button class="signup-filter" onclick="toggleSignupFilter()">${
+      signupOnlyFree
+        ? `＋ Auch die ${versteckt} besetzten Tage anzeigen`
+        : `− Nur Tage mit freien Diensten anzeigen`
+    }</button>`;
+  }
+
+  zuZeigen.forEach(t=>{
+    const allTaken = t.freie.length===0 && t.meine.length===0;
+    html+=`<div class="signup-day${t.freie.length?' hat-frei':''}${allTaken?' ist-voll':''}">
+      <div class="signup-day-header" style="${t.istWE?'background:var(--gold-bg)':''}">
         <div>
-          <div class="signup-day-name" style="${isWE?'color:var(--gold)':''}">${dayLabel}${hn?` · <span style="color:var(--accent);font-size:10px">${hn}</span>`:''}</div>
+          <div class="signup-day-name" style="${t.istWE?'color:var(--gold)':''}">${t.label}${t.feiertag?` · <span style="color:var(--accent);font-size:10px">${t.feiertag}</span>`:''}</div>
         </div>
+        ${t.freie.length?`<span class="signup-day-free">${t.freie.length} frei</span>`:''}
         ${allTaken?'<span class="signup-day-full">besetzt</span>':''}
       </div>
       <div class="signup-slots">`;
 
-    slots.forEach(s=>{
+    t.slots.forEach(s=>{
       if(s.isMine && s.reqRemove){
-        // Bestätigter Dienst, Abmeldung ist angefragt
         html+=`<button class="signup-slot pending" onclick="withdrawRequest('${s.reqRemove.id}',this)" title="Abmeldung angefragt – tippen zum Zurückziehen">${s.label} ⏳<span class="req-note">Viktor meldet sich</span></button>`;
       } else if(s.isMine){
-        html+=`<button class="signup-slot mine" onclick="requestRemoval('${key}','${s.start}','${s.end}',this)" title="Abmeldung anfragen">${s.label} ✓<span class="undo-hint">✕</span></button>`;
+        html+=`<button class="signup-slot mine" onclick="requestRemoval('${t.key}','${s.start}','${s.end}',this)" title="Abmeldung anfragen">${s.label} ✓<span class="undo-hint">✕</span></button>`;
       } else if(s.reqAdd){
-        // Eigene offene Anfrage
         html+=`<button class="signup-slot pending" onclick="withdrawRequest('${s.reqAdd.id}',this)" title="Angefragt – tippen zum Zurückziehen">${s.label} ⏳<span class="req-note">Viktor meldet sich</span></button>`;
       } else if(s.isBlocked||s.isTaken){
         html+=`<button class="signup-slot taken" disabled>${s.label}</button>`;
       } else {
-        html+=`<button class="signup-slot available" onclick="requestShift('${key}','${s.id}','${s.start}','${s.end}',this)">${s.label}</button>`;
+        html+=`<button class="signup-slot available" onclick="requestShift('${t.key}','${s.id}','${s.start}','${s.end}',this)">${s.label}</button>`;
       }
     });
 
     html+=`</div></div>`;
-  }
+  });
 
-  if(!hasAny) html+=`<p style="text-align:center;color:var(--slate);padding:40px">Keine offenen Dienste in diesem Monat.</p>`;
+  if(!zuZeigen.length) html+=`<p style="text-align:center;color:var(--slate);padding:30px">Keine Dienste in diesem Monat.</p>`;
   el.innerHTML=html;
 }
+
+// Besetzte Tage ein-/ausblenden
+function toggleSignupFilter(){ signupOnlyFree=!signupOnlyFree; renderSignupView(); }
 
 // Monat in der Anfrage-Ansicht wechseln
 function changeSignupMonth(delta){
