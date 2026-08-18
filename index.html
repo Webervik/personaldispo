@@ -836,7 +836,7 @@ function renderSignupView(){
       <div class="signup-month-title">Freie Dienste — ${MONTHS_DE[M]} ${Y}</div>
       <button class="btn-icon" onclick="changeSignupMonth(1)">→</button>
     </div>
-    <p class="signup-subtitle">Tippe auf einen freien Dienst, um ihn anzufragen. Die Verwaltung bestätigt ihn anschließend.</p>`;
+    <p class="signup-subtitle">Tippe auf einen freien Dienst, um ihn anzufragen — Viktor meldet sich dann bei dir. 🙂</p>`;
 
   let hasAny=false;
   for(let d=1;d<=last;d++){
@@ -887,12 +887,12 @@ function renderSignupView(){
     slots.forEach(s=>{
       if(s.isMine && s.reqRemove){
         // Bestätigter Dienst, Abmeldung ist angefragt
-        html+=`<button class="signup-slot pending" onclick="withdrawRequest('${s.reqRemove.id}',this)" title="Abmeldung angefragt – tippen zum Zurückziehen">${s.label} ⏳<span class="req-note">Abmeldung angefragt</span></button>`;
+        html+=`<button class="signup-slot pending" onclick="withdrawRequest('${s.reqRemove.id}',this)" title="Abmeldung angefragt – tippen zum Zurückziehen">${s.label} ⏳<span class="req-note">Viktor meldet sich</span></button>`;
       } else if(s.isMine){
         html+=`<button class="signup-slot mine" onclick="requestRemoval('${key}','${s.start}','${s.end}',this)" title="Abmeldung anfragen">${s.label} ✓<span class="undo-hint">✕</span></button>`;
       } else if(s.reqAdd){
         // Eigene offene Anfrage
-        html+=`<button class="signup-slot pending" onclick="withdrawRequest('${s.reqAdd.id}',this)" title="Angefragt – tippen zum Zurückziehen">${s.label} ⏳<span class="req-note">angefragt</span></button>`;
+        html+=`<button class="signup-slot pending" onclick="withdrawRequest('${s.reqAdd.id}',this)" title="Angefragt – tippen zum Zurückziehen">${s.label} ⏳<span class="req-note">Viktor meldet sich</span></button>`;
       } else if(s.isBlocked||s.isTaken){
         html+=`<button class="signup-slot taken" disabled>${s.label}</button>`;
       } else {
@@ -974,6 +974,22 @@ function markDecisionsSeen(){
 
 function reqId(){ return 'r_'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 
+// Freundliche Bestätigungen — abwechselnd, damit es lebendig bleibt
+const COACH_ANFRAGE = [
+  '🎉 Anfrage ist drin! Viktor schaut sie sich an und meldet sich bei dir.',
+  '💪 Stark! Dein Wunsch liegt bei Viktor — er meldet sich.',
+  '🌟 Angekommen! Viktor sieht sich das an und gibt dir Bescheid.',
+  '🚀 Abgeschickt! Viktor meldet sich bei dir.',
+  '👏 Klasse gemacht! Viktor prüft deine Anfrage und antwortet dir.',
+  '✨ Notiert! Viktor schaut drauf und meldet sich.'
+];
+const COACH_ABMELDUNG = [
+  '👍 Alles klar! Deine Abmeldung ist bei Viktor — er meldet sich.',
+  '✔️ Verstanden! Viktor schaut sich das an und gibt dir Bescheid.',
+  '🤝 Kein Problem! Viktor meldet sich bei dir.'
+];
+function coachSpruch(liste){ return liste[Math.floor(Math.random()*liste.length)]; }
+
 // ── GitHub-Schreiben beim Signup ──────────────────────────────────────────────
 // Gemeinsamer Schreibvorgang auf die Anfrage-Liste in daten.json
 async function _saveRequests(mutate, commitMsg){
@@ -1023,7 +1039,7 @@ async function requestShift(key, shiftTypeId, startT, endT, btn){
         requestedAt:new Date().toISOString(), status:'pending'
       });
     }, `Anfrage: ${nurseName} – ${key} ${startT}–${endT}`);
-    showToast('📨 Anfrage gesendet – wartet auf Bestätigung');
+    showToast(coachSpruch(COACH_ANFRAGE));
     renderSignupView();
   }catch(e){
     showToast('❌ Fehler: '+e.message);
@@ -1051,7 +1067,7 @@ async function requestRemoval(key, startT, endT, btn){
         requestedAt:new Date().toISOString(), status:'pending'
       });
     }, `Abmelde-Anfrage: ${nurseName} – ${key} ${startT}–${endT}`);
-    showToast('📨 Abmeldung angefragt – wartet auf Bestätigung');
+    showToast(coachSpruch(COACH_ABMELDUNG));
     renderSignupView();
   }catch(e){
     showToast('❌ Fehler: '+e.message);
@@ -1361,7 +1377,7 @@ function showToast(msg) {
   if (!t) {
     t = document.createElement('div');
     t.id = 'toast-msg';
-    t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--cream);padding:10px 20px;border-radius:20px;font-size:13px;z-index:9999;pointer-events:none;transition:opacity .3s';
+    t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--cream);padding:12px 20px;border-radius:16px;font-size:13.5px;line-height:1.45;text-align:center;max-width:min(420px,calc(100vw - 32px));z-index:9999;pointer-events:none;transition:opacity .3s';
     document.body.appendChild(t);
   }
   t.textContent = msg;
