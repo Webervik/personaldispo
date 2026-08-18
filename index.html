@@ -443,6 +443,8 @@ function dateKey(y, m, d) {
 function parseKey(k) { const [y,m,d] = k.split('-').map(Number); return {year:y, month:m-1, day:d}; }
 function getAssignments(k) { return state.assignments[k] || []; }
 function getNurse(id) { return state.nurses.find(n => n.id === id); }
+// Einheitliche alphabetische Sortierung (deutsch) für alle Pflegerinnen-Listen
+function sortedNurses(list) { return [...list].sort((a,b)=>(a.name||'').localeCompare(b.name||'','de',{sensitivity:'base'})); }
 function getShiftType(id) { return state.shiftTypes.find(s => s.id === id); }
 function isWeekend(d) { return d.getDay() === 0 || d.getDay() === 6; }
 function shiftDuration(s, e) {
@@ -658,7 +660,7 @@ function renderTableView() {
   const {viewYear:Y, viewMonth:M}=state;
   const last=new Date(Y,M+1,0).getDate();
   const today=new Date(), holidays={...getPublicHolidays(Y),...getPublicHolidays(Y+1)};
-  const activeNurses=state.nurses.filter(n=>n.active);
+  const activeNurses=sortedNurses(state.nurses.filter(n=>n.active));
   let html='<table class="disp-table"><thead><tr>';
   html+='<th class="col-date">Datum</th>';
   activeNurses.forEach(n=>{
@@ -1016,7 +1018,7 @@ function showNurseSelect() {
   document.getElementById('app').classList.remove('visible');
   document.getElementById('nurse-select-screen').style.display='flex';
   const grid=document.getElementById('nurse-select-grid');
-  grid.innerHTML=state.nurses.filter(n=>n.active).map(n=>
+  grid.innerHTML=sortedNurses(state.nurses.filter(n=>n.active)).map(n=>
     `<button class="nurse-pick-btn" onclick="pickNurse('${n.id}')">${n.name}</button>`
   ).join('');
 }
