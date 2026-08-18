@@ -152,6 +152,23 @@ body{font-family:'DM Sans',sans-serif;background:var(--cream);color:var(--ink);m
 .signup-slot.mine:hover{background:#1f5e55;border-color:#1f5e55}
 .signup-slot.mine .undo-hint{font-size:10px;opacity:.75;margin-left:4px}
 .signup-slot.taken{background:var(--cream);border-color:var(--border);color:var(--slate);cursor:not-allowed;opacity:.5}
+/* Angefragt – wartet auf Bestätigung durch die Verwaltung */
+.signup-slot.pending{background:#FDF6E3;border-color:var(--gold,#B08A2F);color:#8a6a1f;cursor:pointer}
+.signup-slot.pending:hover{background:#F7EBCC}
+.signup-slot .req-note{display:block;font-size:9px;opacity:.8;margin-top:1px;font-weight:400}
+/* Monatsnavigation in der Anfrage-Ansicht */
+.signup-nav{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:4px}
+.signup-nav .signup-month-title{margin-bottom:0}
+/* Hinweis-Balken: Antworten auf Anfragen */
+#decision-banner{position:fixed;left:0;right:0;bottom:0;z-index:9998;background:var(--warm-white,#fff);
+  border-top:3px solid var(--teal,#2D6A4F);box-shadow:0 -6px 24px rgba(0,0,0,.14);padding:14px 16px}
+#decision-banner .db-inner{max-width:640px;margin:0 auto}
+#decision-banner .db-title{font-family:'DM Serif Display',serif;font-size:17px;margin-bottom:6px}
+#decision-banner .db-ok,#decision-banner .db-no{font-size:12.5px;line-height:1.5;margin-bottom:3px}
+#decision-banner .db-ok{color:#1f5e55}
+#decision-banner .db-no{color:#9B2C2C}
+#decision-banner .db-btn{margin-top:10px;width:100%;padding:11px;border:none;border-radius:10px;
+  background:var(--teal,#2D6A4F);color:#fff;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer}
 .signup-saving{opacity:.6;pointer-events:none}
 
 /* ── Personal schedule ── */
@@ -370,13 +387,14 @@ const DAY_START = 8 * 60;
 const DAY_END   = 22 * 60;
 
 // State — populated from cloud only
-let state = { nurses: [], shiftTypes: [], assignments: {}, viewYear: 0, viewMonth: 0 };
+let state = { nurses: [], shiftTypes: [], assignments: {}, requests: [], viewYear: 0, viewMonth: 0 };
 let selectedNurseId = null;
 let currentView = 'calendar';
 let writeToken = '';        // GitHub write token (from daten.json, set by admin)
 let signupYear = null;      // from ?monat= URL param
 let signupMonth = null;
-let signupLinkExpiry = null; // from ?exp= URL param (timestamp, ms)
+let signupLinkExpiry = null; // (nicht mehr genutzt — Link läuft nicht mehr ab)
+let _openSignupOnStart = false; // true, wenn ?monat= im Link steht
 
 // ══ KONFIGURATION ════════════════════════════════════════════════════════════
 // Die Dienstplan-Daten liegen aus Datenschutzgründen in einem PRIVATEN Repository.
@@ -813,17 +831,12 @@ function renderSignupView(){
     return;
   }
 
-  if(signupLinkExpiry===null || Date.now()>signupLinkExpiry){
-    el.innerHTML=`<div style="text-align:center;padding:40px;color:var(--slate)">
-      <div style="font-size:32px;margin-bottom:8px">⏰</div>
-      <div style="font-family:'DM Serif Display',serif;font-size:18px">Link abgelaufen</div>
-      <div style="font-size:12px;margin-top:8px">Dieser Eintrage-Link ist nicht mehr gültig. Bitte einen neuen Link bei der Verwaltung anfordern.</div>
-    </div>`;
-    return;
-  }
-
-  let html=`<div class="signup-month-title">Freie Dienste — ${MONTHS_DE[M]} ${Y}</div>
-    <p class="signup-subtitle">Klicke auf einen freien Dienst, um dich einzutragen. Bereits besetzte Dienste sind grau.</p>`;
+  let html=`<div class="signup-nav">
+      <button class="btn-icon" onclick="changeSignupMonth(-1)">←</button>
+      <div class="signup-month-title">Freie Dienste — ${MONTHS_DE[M]} ${Y}</div>
+      <button class="btn-icon" onclick="changeSignupMonth(1)">→</button>
+    </div>
+    <p class="signup-subtitle">Tippe auf einen freien Dienst, um ihn anzufragen. Die Verwaltung bestätigt ihn anschließend.</p>`;
 
   let hasAny=false;
   for(let d=1;d<=last;d++){
@@ -853,7 +866,10 @@ function renderSignupView(){
       const isTaken=!isMine&&!isBlocked&&assigns.some(a=>
         a.nurseId!==selectedNurseId&&shiftOverlaps(sMin,eMin,a.customStart||'08:00',a.customEnd||'15:00')
       );
-      return {...s, isMine, isBlocked, isTaken};
+      // Offene Anfragen für diesen Slot
+      const reqAdd    = pendingRequestFor(key, s.start, s.end, 'add');
+      const reqRemove = pendingRequestFor(key, s.start, s.end, 'remove');
+      return {...s, isMine, isBlocked, isTaken, reqAdd, reqRemove};
     });
 
     const allTaken=slots.every(s=>s.isTaken||s.isMine);
@@ -869,12 +885,18 @@ function renderSignupView(){
       <div class="signup-slots">`;
 
     slots.forEach(s=>{
-      if(s.isMine){
-        html+=`<button class="signup-slot mine" onclick="removeSignup('${key}','${s.start}','${s.end}',this)">${s.label} ✓<span class="undo-hint">✕</span></button>`;
+      if(s.isMine && s.reqRemove){
+        // Bestätigter Dienst, Abmeldung ist angefragt
+        html+=`<button class="signup-slot pending" onclick="withdrawRequest('${s.reqRemove.id}',this)" title="Abmeldung angefragt – tippen zum Zurückziehen">${s.label} ⏳<span class="req-note">Abmeldung angefragt</span></button>`;
+      } else if(s.isMine){
+        html+=`<button class="signup-slot mine" onclick="requestRemoval('${key}','${s.start}','${s.end}',this)" title="Abmeldung anfragen">${s.label} ✓<span class="undo-hint">✕</span></button>`;
+      } else if(s.reqAdd){
+        // Eigene offene Anfrage
+        html+=`<button class="signup-slot pending" onclick="withdrawRequest('${s.reqAdd.id}',this)" title="Angefragt – tippen zum Zurückziehen">${s.label} ⏳<span class="req-note">angefragt</span></button>`;
       } else if(s.isBlocked||s.isTaken){
         html+=`<button class="signup-slot taken" disabled>${s.label}</button>`;
       } else {
-        html+=`<button class="signup-slot available" onclick="signupForShift('${key}','${s.id}','${s.start}','${s.end}',this)">${s.label}</button>`;
+        html+=`<button class="signup-slot available" onclick="requestShift('${key}','${s.id}','${s.start}','${s.end}',this)">${s.label}</button>`;
       }
     });
 
@@ -885,128 +907,175 @@ function renderSignupView(){
   el.innerHTML=html;
 }
 
+// Monat in der Anfrage-Ansicht wechseln
+function changeSignupMonth(delta){
+  let y=signupYear, m=signupMonth+delta;
+  if(m<0){ m=11; y--; } if(m>11){ m=0; y++; }
+  signupYear=y; signupMonth=m;
+  renderSignupView();
+}
+
+// Hinweis-Balken: beantwortete Anfragen, die die Pflegerin noch nicht gesehen hat
+function renderDecisionBanner(){
+  const old=document.getElementById('decision-banner');
+  if(old) old.remove();
+  const neu=newDecisions();
+  if(!neu.length) return;
+  const ok=neu.filter(r=>r.status==='approved');
+  const no=neu.filter(r=>r.status==='rejected');
+  const fmt=r=>{
+    const [yy,mm,dd]=r.date.split('-').map(Number);
+    const t=`${dd}. ${MONTHS_DE[mm-1]}`;
+    const zeit=r.customStart&&r.customEnd?` ${r.customStart}–${r.customEnd}`:'';
+    const art=r.type==='remove'?' (Abmeldung)':'';
+    return `${t}${zeit}${art}${r.reason?` — ${r.reason}`:''}`;
+  };
+  const div=document.createElement('div');
+  div.id='decision-banner';
+  div.innerHTML=`
+    <div class="db-inner">
+      <div class="db-title">📬 ${neu.length} ${neu.length===1?'Antwort':'Antworten'} auf deine ${neu.length===1?'Anfrage':'Anfragen'}</div>
+      ${ok.length?`<div class="db-ok"><strong>✅ Bestätigt:</strong> ${ok.map(fmt).join(' · ')}</div>`:''}
+      ${no.length?`<div class="db-no"><strong>❌ Abgelehnt:</strong> ${no.map(fmt).join(' · ')}</div>`:''}
+      <button class="db-btn" onclick="markDecisionsSeen()">Verstanden</button>
+    </div>`;
+  document.body.appendChild(div);
+}
+
+// ── Anfragen: Hilfsfunktionen ────────────────────────────────────────────────
+// Pflegerinnen schreiben NICHT mehr direkt in den Dienstplan, sondern stellen
+// Anfragen. Erst die Freigabe durch die Verwaltung macht daraus einen Dienst.
+function myRequests(){ return (state.requests||[]).filter(r=>r.nurseId===selectedNurseId); }
+
+// Offene Anfrage für genau diesen Slot (oder null)
+function pendingRequestFor(key, startT, endT, type){
+  return myRequests().find(r=>
+    r.status==='pending' && r.date===key && r.type===type &&
+    (r.customStart||'')===startT && (r.customEnd||'')===endT
+  ) || null;
+}
+
+// Noch nicht gesehene Entscheidungen (für den Hinweis-Balken)
+const SEEN_KEY='dispo_gesehene_antworten';
+function seenDecisions(){
+  try{ return JSON.parse(localStorage.getItem(SEEN_KEY)||'[]'); }catch(e){ return []; }
+}
+function newDecisions(){
+  const seen=new Set(seenDecisions());
+  return myRequests().filter(r=>r.status && r.status!=='pending' && !seen.has(r.id));
+}
+function markDecisionsSeen(){
+  const all=new Set(seenDecisions());
+  myRequests().forEach(r=>{ if(r.status && r.status!=='pending') all.add(r.id); });
+  try{ localStorage.setItem(SEEN_KEY, JSON.stringify([...all])); }catch(e){}
+  renderDecisionBanner();
+  if(currentView==='signup'||signupYear!==null) renderSignupView();
+}
+
+function reqId(){ return 'r_'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+
 // ── GitHub-Schreiben beim Signup ──────────────────────────────────────────────
-async function signupForShift(key, shiftTypeId, startT, endT, btn){
+// Gemeinsamer Schreibvorgang auf die Anfrage-Liste in daten.json
+async function _saveRequests(mutate, commitMsg){
+  const GITHUB_REPO='Webervik/dispo-daten';
+  const GITHUB_FILE='daten.json';
+  const apiUrl=`https://api.github.com/repos/${GITHUB_REPO}/contents/${GITHUB_FILE}`;
+  const getRes=await fetch(apiUrl+'?t='+Date.now(),{cache:'no-store',headers:{
+    'Authorization':`Bearer ${writeToken}`,'Accept':'application/vnd.github+json'
+  }});
+  if(!getRes.ok) throw new Error('GitHub Lesefehler: '+getRes.status);
+  const getMeta=await getRes.json();
+  const sha=getMeta.sha;
+  if(getMeta.content===undefined||getMeta.content===null) throw new Error('Aktueller Stand nicht ladbar – bitte Seite neu laden und nochmal versuchen.');
+  const currentData=JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(getMeta.content.replace(/\n/g,'')),c=>c.charCodeAt(0))));
+  if(!Array.isArray(currentData.requests)) currentData.requests=[];
+
+  mutate(currentData);
+
+  const putRes=await fetch(apiUrl,{
+    method:'PUT', cache:'no-store',
+    headers:{'Authorization':`Bearer ${writeToken}`,'Accept':'application/vnd.github+json','Content-Type':'application/json'},
+    body:JSON.stringify({
+      message:commitMsg,
+      content:(function(str){ const bytes=new TextEncoder().encode(str); let b=''; bytes.forEach(x=>b+=String.fromCharCode(x)); return btoa(b); })(JSON.stringify(currentData,null,2)),
+      sha, branch:'main'
+    })
+  });
+  if(!putRes.ok){const e=await putRes.json(); throw new Error(e.message||putRes.status);}
+  state.requests    = currentData.requests;
+  state.assignments = currentData.assignments || state.assignments;
+}
+
+// Dienst anfragen (statt direkt eintragen)
+async function requestShift(key, shiftTypeId, startT, endT, btn){
   if(!writeToken){ showToast('❌ Kein Schreibzugriff'); return; }
   if(!selectedNurseId){ showToast('❌ Kein Name gewählt'); return; }
-  if(signupLinkExpiry===null || Date.now()>signupLinkExpiry){
-    showToast('⏰ Link abgelaufen — bitte neuen Link anfordern');
-    renderSignupView();
-    return;
-  }
-
   btn.classList.add('signup-saving');
-  btn.textContent='⏳ Wird eingetragen…';
-
-  try {
-    // Aktuellen Stand von GitHub laden (für SHA)
-    const GITHUB_REPO='Webervik/dispo-daten';
-    const GITHUB_FILE='daten.json';
-    const apiUrl=`https://api.github.com/repos/${GITHUB_REPO}/contents/${GITHUB_FILE}`;
-
-    const getRes=await fetch(apiUrl+'?t='+Date.now(),{cache:'no-store',headers:{
-      'Authorization':`Bearer ${writeToken}`,'Accept':'application/vnd.github+json'
-    }});
-    if(!getRes.ok) throw new Error('GitHub Lesefehler: '+getRes.status);
-    const getMeta=await getRes.json();
-    const sha=getMeta.sha;
-    if(getMeta.content===undefined||getMeta.content===null) throw new Error('Aktueller Stand nicht ladbar – bitte Seite neu laden und nochmal versuchen.');
-    const currentData=JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(getMeta.content.replace(/\n/g,'')),c=>c.charCodeAt(0))));
-
-    // Prüfen ob Slot noch frei (Refresh-Schutz)
-    const sMin=timeToMin(startT); let eMin=timeToMin(endT); if(eMin<=sMin) eMin+=1440;
-    const existing=(currentData.assignments[key]||[]).filter(a=>!a.vacation);
-    const conflict=existing.some(a=>a.nurseId!==selectedNurseId&&shiftOverlaps(sMin,eMin,a.customStart||'08:00',a.customEnd||'15:00'));
-    if(conflict){
-      showToast('⚠️ Dieser Dienst wurde gerade von jemand anderem belegt.');
-      btn.classList.remove('signup-saving');
-      btn.textContent=btn.dataset.label||shiftTypeId;
-      renderSignupView(); // Ansicht aktualisieren
-      return;
-    }
-
-    // Eintrag hinzufügen
-    if(!currentData.assignments[key]) currentData.assignments[key]=[];
-    currentData.assignments[key].push({
-      nurseId:selectedNurseId, shiftTypeId, customStart:startT, customEnd:endT, vacation:false, note:'', addedAt:new Date().toISOString(), addedBy:'nurse'
-    });
-
-    // Lokalen State auch aktualisieren
-    state.assignments=currentData.assignments;
-
-    // Zurück auf GitHub schreiben
-    const putRes=await fetch(apiUrl,{
-      method:'PUT',
-      headers:{'Authorization':`Bearer ${writeToken}`,'Accept':'application/vnd.github+json','Content-Type':'application/json'},
-      body:JSON.stringify({
-        message:`Dienst eingetragen: ${getNurse(selectedNurseId)?.name} – ${key}`,
-        content:(function(str){ const bytes=new TextEncoder().encode(str); let b=''; bytes.forEach(x=>b+=String.fromCharCode(x)); return btoa(b); })(JSON.stringify(currentData,null,2)),
-        sha,
-        branch:'main'
-      })
-    });
-    if(!putRes.ok){const e=await putRes.json(); throw new Error(e.message||putRes.status);}
-
-    showToast('✅ Eingetragen!');
-    renderSignupView(); // Ansicht neu aufbauen
-
-  } catch(e){
+  btn.textContent='⏳ …';
+  const nurseName=getNurse(selectedNurseId)?.name||'';
+  try{
+    await _saveRequests(data=>{
+      const dup=data.requests.some(r=>r.status==='pending'&&r.nurseId===selectedNurseId&&
+        r.date===key&&r.type==='add'&&r.customStart===startT&&r.customEnd===endT);
+      if(!dup) data.requests.push({
+        id:reqId(), nurseId:selectedNurseId, date:key, type:'add',
+        shiftTypeId, customStart:startT, customEnd:endT,
+        requestedAt:new Date().toISOString(), status:'pending'
+      });
+    }, `Anfrage: ${nurseName} – ${key} ${startT}–${endT}`);
+    showToast('📨 Anfrage gesendet – wartet auf Bestätigung');
+    renderSignupView();
+  }catch(e){
     showToast('❌ Fehler: '+e.message);
     btn.classList.remove('signup-saving');
-    btn.textContent=shiftTypeId.toUpperCase();
+    renderSignupView();
     console.error(e);
   }
 }
 
-// ── Dienst wieder abmelden ───────────────────────────────────────────────────
-async function removeSignup(key, startT, endT, btn){
+// Abmeldung von einem bestätigten Dienst anfragen
+async function requestRemoval(key, startT, endT, btn){
   if(!writeToken){ showToast('❌ Kein Schreibzugriff'); return; }
+  if(!selectedNurseId){ showToast('❌ Kein Name gewählt'); return; }
+  if(!confirm('Abmeldung von diesem Dienst anfragen?')) return;
+  btn.classList.add('signup-saving');
   btn.textContent='⏳ …';
-  btn.disabled=true;
-
-  try {
-    // WICHTIG: gleiches (privates) Daten-Repo wie beim Eintragen — sonst laufen
-    // Anmeldung und Abmeldung in verschiedene Repos auseinander.
-    const GITHUB_REPO='Webervik/dispo-daten';
-    const GITHUB_FILE='daten.json';
-    const apiUrl=`https://api.github.com/repos/${GITHUB_REPO}/contents/${GITHUB_FILE}`;
-
-    const getRes=await fetch(apiUrl+'?t='+Date.now(),{cache:'no-store',headers:{
-      'Authorization':`Bearer ${writeToken}`,'Accept':'application/vnd.github+json'
-    }});
-    if(!getRes.ok) throw new Error('GitHub Lesefehler: '+getRes.status);
-    const getMeta=await getRes.json();
-    const sha=getMeta.sha;
-    if(getMeta.content===undefined||getMeta.content===null) throw new Error('Aktueller Stand nicht ladbar – bitte Seite neu laden und nochmal versuchen.');
-    const currentData=JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(getMeta.content.replace(/\n/g,'')),c=>c.charCodeAt(0))));
-
-    // Genau diesen Eintrag entfernen (Pflegerin + exakte Zeiten)
-    if(currentData.assignments[key]){
-      currentData.assignments[key]=currentData.assignments[key].filter(a=>
-        !(a.nurseId===selectedNurseId &&
-          (a.customStart||'08:00')===startT &&
-          (a.customEnd||'22:00')===endT)
-      );
-    }
-    state.assignments=currentData.assignments;
-
-    const putRes=await fetch(apiUrl,{
-      method:'PUT',
-      headers:{'Authorization':`Bearer ${writeToken}`,'Accept':'application/vnd.github+json','Content-Type':'application/json'},
-      body:JSON.stringify({
-        message:`Dienst abgemeldet: ${getNurse(selectedNurseId)?.name} – ${key}`,
-        content:(function(str){ const bytes=new TextEncoder().encode(str); let b=''; bytes.forEach(x=>b+=String.fromCharCode(x)); return btoa(b); })(JSON.stringify(currentData,null,2)),
-        sha,
-        branch:'main'
-      })
-    });
-    if(!putRes.ok){const e=await putRes.json(); throw new Error(e.message||putRes.status);}
-
-    showToast('↩️ Abgemeldet');
+  const nurseName=getNurse(selectedNurseId)?.name||'';
+  try{
+    await _saveRequests(data=>{
+      const dup=data.requests.some(r=>r.status==='pending'&&r.nurseId===selectedNurseId&&
+        r.date===key&&r.type==='remove'&&r.customStart===startT&&r.customEnd===endT);
+      if(!dup) data.requests.push({
+        id:reqId(), nurseId:selectedNurseId, date:key, type:'remove',
+        customStart:startT, customEnd:endT,
+        requestedAt:new Date().toISOString(), status:'pending'
+      });
+    }, `Abmelde-Anfrage: ${nurseName} – ${key} ${startT}–${endT}`);
+    showToast('📨 Abmeldung angefragt – wartet auf Bestätigung');
     renderSignupView();
-  } catch(e){
+  }catch(e){
     showToast('❌ Fehler: '+e.message);
-    btn.disabled=false;
+    btn.classList.remove('signup-saving');
+    renderSignupView();
+    console.error(e);
+  }
+}
+
+// Eigene offene Anfrage wieder zurückziehen
+async function withdrawRequest(id, btn){
+  if(!writeToken){ showToast('❌ Kein Schreibzugriff'); return; }
+  btn.classList.add('signup-saving');
+  btn.textContent='⏳ …';
+  const nurseName=getNurse(selectedNurseId)?.name||'';
+  try{
+    await _saveRequests(data=>{
+      data.requests=data.requests.filter(r=>!(r.id===id&&r.status==='pending'));
+    }, `Anfrage zurückgezogen: ${nurseName}`);
+    showToast('↩️ Anfrage zurückgezogen');
+    renderSignupView();
+  }catch(e){
+    showToast('❌ Fehler: '+e.message);
+    btn.classList.remove('signup-saving');
     renderSignupView();
     console.error(e);
   }
@@ -1047,10 +1116,15 @@ function pickNurse(id) {
     if (myPlanTab) myPlanTab.classList.add('active');
     if (myPlanBtn) myPlanBtn.classList.add('active');
 
-    // Signup-Tab anzeigen und ggf. direkt dorthin
-    if(signupYear!==null){
-      document.getElementById('signup-tab-btn').style.display='';
-      renderSignupView();
+    // "Freie Dienste" ist jetzt immer erreichbar — ein Link genügt für alles.
+    // Ohne ?monat= startet die Ansicht beim aktuellen Monat.
+    if(signupYear===null){
+      const t=new Date(); signupYear=t.getFullYear(); signupMonth=t.getMonth();
+    }
+    document.getElementById('signup-tab-btn').style.display='';
+    renderSignupView();
+    renderDecisionBanner();
+    if(_openSignupOnStart){
       showTab('signup',document.getElementById('signup-tab-btn'));
     } else {
       renderPersonalSchedule();
@@ -1152,6 +1226,7 @@ boot(); return;
   state.nurses      = fixNurseNames(s.nurses);
   state.shiftTypes  = fixShiftTypeNames(s.shiftTypes);
   state.assignments = s.assignments || {};
+  state.requests    = Array.isArray(s.requests) ? s.requests : [];
   writeToken        = s.wte ? s.wte.split('').reverse().join('') : (SIGNUP_TOKEN || '');
 
   if (state.nurses.length === 0) {
@@ -1270,7 +1345,7 @@ function checkDeepLink() {
   const monatParam = params.get('monat');
   if (monatParam) {
     const [y,m] = monatParam.split('-').map(Number);
-    if (y && m) { signupYear = y; signupMonth = m - 1; }
+    if (y && m) { signupYear = y; signupMonth = m - 1; _openSignupOnStart = true; }
   }
   // ?exp=<timestamp> → Link verfällt nach diesem Zeitpunkt (ms seit Epoch)
   const expParam = params.get('exp');
