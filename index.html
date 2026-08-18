@@ -200,6 +200,15 @@ body{font-family:'DM Sans',sans-serif;background:var(--cream);color:var(--ink);m
   padding:3px 9px;border-radius:10px;white-space:nowrap}
 /* Freie Plätze deutlicher */
 .signup-slot.available{font-weight:600}
+.pdf-btn{background:var(--warm-white);border:1px solid var(--border);color:var(--ink);
+  padding:7px 13px;border-radius:var(--radius-sm);font-family:inherit;font-size:12.5px;
+  font-weight:600;cursor:pointer;white-space:nowrap}
+.pdf-btn:hover{background:var(--teal);border-color:var(--teal);color:#fff}
+/* Code-Abfrage beim Namenswechsel */
+#pin-gate{position:fixed;inset:0;background:#f4f1ea;z-index:9999;display:flex;
+  align-items:center;justify-content:center;padding:20px}
+#pin-gate .pg-box{background:#fff;border-radius:16px;padding:28px;max-width:340px;width:100%;
+  box-shadow:0 10px 40px rgba(0,0,0,.12);text-align:center}
 /* Monatsnavigation in der Anfrage-Ansicht */
 .signup-nav{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:4px}
 .signup-nav .signup-month-title{margin-bottom:0}
@@ -374,6 +383,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--cream);color:var(--ink);m
           <h2 id="month-title">—</h2>
           <button class="btn-icon" id="btn-next" onclick="changeMonth(1)">→</button>
         </div>
+        <button class="pdf-btn" onclick="exportMonthPdf()" title="Monatsplan als PDF sichern oder drucken">📄 Als PDF</button>
         <div style="display:flex;background:var(--cream);border:1px solid var(--border);border-radius:var(--radius-sm);padding:2px;gap:2px">
           <button id="view-toggle-cal" class="view-toggle-btn active" onclick="setView('calendar')" title="Kalenderansicht">
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style="display:block"><rect x="1" y="2" width="12" height="11" rx="1.5" stroke="currentColor" stroke-width="1.3"/><path d="M1 5h12" stroke="currentColor" stroke-width="1.3"/><path d="M4.5 1v2M9.5 1v2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><rect x="3" y="7" width="2" height="2" rx=".4" fill="currentColor"/><rect x="6" y="7" width="2" height="2" rx=".4" fill="currentColor"/><rect x="9" y="7" width="2" height="2" rx=".4" fill="currentColor"/><rect x="3" y="10" width="2" height="1.2" rx=".3" fill="currentColor"/><rect x="6" y="10" width="2" height="1.2" rx=".3" fill="currentColor"/></svg>
@@ -1016,6 +1026,46 @@ function renderDecisionBanner(){
   document.body.appendChild(div);
 }
 
+// ── Persönlicher Code (SHA-256, ohne externe Bibliothek) ────────────────────
+// Der Code wird nur als Prüfsumme gespeichert — er steht nirgends im Klartext.
+function sha256Hex(str){
+  const K=[0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+  0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+  0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+  0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+  0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+  0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+  0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+  0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+  let H=[0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+  const bytes=new TextEncoder().encode(str), l=bytes.length;
+  const k=(56-(l+1)%64+64)%64, total=l+1+k+8;
+  const m=new Uint8Array(total); m.set(bytes); m[l]=0x80;
+  const dv=new DataView(m.buffer);
+  dv.setUint32(total-8, Math.floor(l*8/4294967296), false);
+  dv.setUint32(total-4, (l*8)>>>0, false);
+  const w=new Uint32Array(64), rotr=(x,n)=>(x>>>n)|(x<<(32-n));
+  for(let i=0;i<total;i+=64){
+    for(let t=0;t<16;t++) w[t]=dv.getUint32(i+t*4,false);
+    for(let t=16;t<64;t++){
+      const s0=rotr(w[t-15],7)^rotr(w[t-15],18)^(w[t-15]>>>3);
+      const s1=rotr(w[t-2],17)^rotr(w[t-2],19)^(w[t-2]>>>10);
+      w[t]=(w[t-16]+s0+w[t-7]+s1)>>>0;
+    }
+    let [a,b,c,d,e,f,g,h]=H;
+    for(let t=0;t<64;t++){
+      const S1=rotr(e,6)^rotr(e,11)^rotr(e,25), ch=(e&f)^(~e&g);
+      const t1=(h+S1+ch+K[t]+w[t])>>>0;
+      const S0=rotr(a,2)^rotr(a,13)^rotr(a,22), maj=(a&b)^(a&c)^(b&c);
+      const t2=(S0+maj)>>>0;
+      h=g;g=f;f=e;e=(d+t1)>>>0;d=c;c=b;b=a;a=(t1+t2)>>>0;
+    }
+    H=[(H[0]+a)>>>0,(H[1]+b)>>>0,(H[2]+c)>>>0,(H[3]+d)>>>0,(H[4]+e)>>>0,(H[5]+f)>>>0,(H[6]+g)>>>0,(H[7]+h)>>>0];
+  }
+  return H.map(x=>x.toString(16).padStart(8,'0')).join('');
+}
+function nursePinHash(nurseId, pin){ return sha256Hex(nurseId+':'+pin); }
+
 // ── Anfragen: Hilfsfunktionen ────────────────────────────────────────────────
 // Pflegerinnen schreiben NICHT mehr direkt in den Dienstplan, sondern stellen
 // Anfragen. Erst die Freigabe durch die Verwaltung macht daraus einen Dienst.
@@ -1171,6 +1221,86 @@ async function withdrawRequest(id, btn){
   }
 }
 
+// ── Monatsplan als PDF ───────────────────────────────────────────────────────
+// Ohne externe Bibliothek: sauber gesetztes Dokument + Druckdialog.
+// Dort "Als PDF sichern" wählen (Handy: Teilen → In Dateien sichern).
+function exportMonthPdf(){
+  const Y=state.viewYear, M=state.viewMonth;
+  const last=new Date(Y,M+1,0).getDate();
+  const holidays={...getPublicHolidays(Y),...getPublicHolidays(Y+1)};
+  const meinName=getNurse(selectedNurseId)?.name||'';
+
+  let zeilen='';
+  for(let d=1;d<=last;d++){
+    const key=dateKey(Y,M,d);
+    const date=new Date(Y,M,d);
+    const dow=date.getDay();
+    const we=dow===0||dow===6;
+    const hn=holidays[key];
+    const eintraege=getAssignments(key)
+      .filter(a=>!a.vacation)
+      .sort((a,b)=>(a.customStart||'').localeCompare(b.customStart||''))
+      .map(a=>{
+        const nurse=getNurse(a.nurseId);
+        const st=getShiftType?getShiftType(a.shiftTypeId):null;
+        const von=a.customStart||st?.start||'?';
+        const bis=a.customEnd||st?.end||'?';
+        const ich=a.nurseId===selectedNurseId;
+        return `<span class="e${ich?' ich':''}"><b>${von}–${bis}</b> ${nurse?nurse.name:'?'}</span>`;
+      }).join(' ');
+    zeilen+=`<tr class="${we?'we':''}">
+      <td class="tag">${DAYS_DE[dow]} ${d}.${hn?`<div class="ft">${hn}</div>`:''}</td>
+      <td>${eintraege||'<span class="leer">— nicht besetzt —</span>'}</td>
+    </tr>`;
+  }
+
+  const html=`<!doctype html><html lang="de"><head><meta charset="utf-8">
+  <title>Dienstplan ${MONTHS_DE[M]} ${Y}</title>
+  <style>
+    @page{size:A4 portrait;margin:14mm}
+    *{box-sizing:border-box}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;
+      color:#1C1814;margin:0;font-size:11pt}
+    h1{font-size:17pt;margin:0 0 2mm}
+    .sub{color:#6b635c;font-size:9.5pt;margin:0 0 5mm}
+    table{width:100%;border-collapse:collapse}
+    th{text-align:left;font-size:8.5pt;text-transform:uppercase;letter-spacing:.4pt;
+      color:#6b635c;border-bottom:1.2pt solid #1C1814;padding:0 0 1.5mm}
+    td{border-bottom:.4pt solid #ddd6ce;padding:1.7mm 0;vertical-align:top}
+    tr.we{background:#faf6ef}
+    td.tag{width:26mm;font-weight:700;white-space:nowrap;padding-left:1.5mm}
+    .ft{font-weight:400;font-size:7.5pt;color:#B5451B}
+    .e{display:inline-block;margin:0 3.5mm 0 0;white-space:nowrap}
+    .e.ich{background:#dff0ea;border-radius:2mm;padding:.4mm 1.6mm}
+    .leer{color:#b9b1a8;font-style:italic}
+    .fuss{margin-top:5mm;font-size:8pt;color:#8a8179;text-align:right}
+    @media print{.hinweis{display:none}}
+    .hinweis{background:#2D6A4F;color:#fff;padding:3mm 4mm;border-radius:2mm;margin-bottom:5mm;font-size:10pt}
+  </style></head><body>
+  <div class="hinweis">Gleich öffnet sich der Druckdialog — dort <b>„Als PDF sichern"</b> wählen.
+    (Handy: Teilen-Symbol → „In Dateien sichern")</div>
+  <h1>Dienstplan ${MONTHS_DE[M]} ${Y}</h1>
+  <p class="sub">${meinName?`Erstellt für ${meinName} · `:''}Eigene Dienste sind hervorgehoben</p>
+  <table><thead><tr><th>Tag</th><th>Dienste</th></tr></thead><tbody>${zeilen}</tbody></table>
+  <div class="fuss">Stand: ${new Date().toLocaleDateString('de-DE')}</div>
+  </body></html>`;
+
+  const w=window.open('','_blank');
+  if(w){
+    w.document.open(); w.document.write(html); w.document.close();
+    setTimeout(()=>{ try{ w.focus(); w.print(); }catch(e){} }, 400);
+  } else {
+    // Fallback, falls das Öffnen eines Fensters blockiert wird
+    const f=document.createElement('iframe');
+    f.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0';
+    document.body.appendChild(f);
+    const doc=f.contentWindow.document;
+    doc.open(); doc.write(html); doc.close();
+    setTimeout(()=>{ try{ f.contentWindow.focus(); f.contentWindow.print(); }catch(e){}
+      setTimeout(()=>f.remove(), 2000); }, 400);
+  }
+}
+
 // ── Nurse selection ───────────────────────────────────────────────────────────
 function showNurseSelect() {
   document.getElementById('loading-screen').style.display='none';
@@ -1183,6 +1313,65 @@ function showNurseSelect() {
 }
 
 function pickNurse(id) {
+  const _n = getNurse(id);
+  // Hat diese Pflegerin einen persönlichen Code, muss er einmal je Gerät
+  // eingegeben werden — sonst könnte jede unter fremdem Namen Dienste ändern.
+  if (_n && _n.pinHash && localStorage.getItem('dispo_ident_'+id) !== _n.pinHash) {
+    showPinGate(id);
+    return;
+  }
+  _openNurse(id);
+}
+
+// Code-Abfrage
+function showPinGate(id, fehler){
+  const nurse=getNurse(id);
+  const old=document.getElementById('pin-gate'); if(old) old.remove();
+  const div=document.createElement('div');
+  div.id='pin-gate';
+  div.innerHTML=`
+    <div class="pg-box">
+      <div style="font-size:2rem;margin-bottom:6px">🔑</div>
+      <h2 style="margin:0 0 6px;font-size:1.15rem">Hallo ${nurse?nurse.name.split(' ')[0]:''}!</h2>
+      <p style="color:#666;font-size:.9rem;margin:0 0 14px;line-height:1.5">
+        ${fehler ? '<span style="color:#9B2C2C">Der Code stimmt nicht. Bitte nochmal versuchen.</span>'
+                 : 'Bitte einmalig deinen persönlichen 4-stelligen Code eingeben. Danach merkt sich dein Handy ihn.'}
+      </p>
+      <input id="pin-gate-input" type="tel" inputmode="numeric" maxlength="4" placeholder="••••"
+        style="width:100%;padding:14px;border:1.5px solid #ddd;border-radius:10px;font-size:1.6rem;
+               text-align:center;letter-spacing:.5em;box-sizing:border-box">
+      <button onclick="checkPinGate('${id}')"
+        style="margin-top:12px;width:100%;padding:13px;border:none;border-radius:10px;background:#2D6A4F;
+               color:#fff;font-size:1rem;font-weight:600;font-family:inherit;cursor:pointer">Weiter</button>
+      <button onclick="closePinGate()"
+        style="margin-top:8px;width:100%;padding:10px;border:none;background:none;color:#888;
+               font-family:inherit;font-size:.85rem;cursor:pointer">Anderen Namen wählen</button>
+    </div>`;
+  document.body.appendChild(div);
+  const inp=document.getElementById('pin-gate-input');
+  inp.focus();
+  inp.addEventListener('keydown',e=>{ if(e.key==='Enter') checkPinGate(id); });
+}
+
+function closePinGate(){
+  const el=document.getElementById('pin-gate'); if(el) el.remove();
+}
+
+function checkPinGate(id){
+  const inp=document.getElementById('pin-gate-input');
+  const pin=(inp?.value||'').trim();
+  const nurse=getNurse(id);
+  if(!/^\d{4}$/.test(pin)){ showPinGate(id,true); return; }
+  if(nursePinHash(id,pin)===nurse.pinHash){
+    localStorage.setItem('dispo_ident_'+id, nurse.pinHash);
+    closePinGate();
+    _openNurse(id);
+  } else {
+    showPinGate(id,true);
+  }
+}
+
+function _openNurse(id) {
   try {
     selectedNurseId = id;
     const nurse = getNurse(id);
@@ -1341,7 +1530,10 @@ boot(); return;
 
   const savedId    = sessionStorage.getItem('pflegedispo_nurse_id');
   const savedNurse = state.nurses.find(n => n.id === savedId && n.active);
-  if (savedNurse) {
+  // Code zwischenzeitlich geändert? Dann erneut abfragen.
+  const identOk = !savedNurse?.pinHash ||
+    localStorage.getItem('dispo_ident_'+savedNurse.id) === savedNurse.pinHash;
+  if (savedNurse && identOk) {
     selectedNurseId = savedNurse.id;
     document.getElementById('header-nurse-name').textContent = savedNurse.name;
     document.getElementById('loading-screen').style.display  = 'none';
