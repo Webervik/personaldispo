@@ -862,31 +862,53 @@
   body.nurse-view .tbl-shift { cursor: default !important; pointer-events: none; }
 
 
-  /* ── Column drag & drop ── */
-  .disp-table th.draggable-col {
-    cursor: grab;
-    user-select: none;
-    position: relative;
-    transition: background .15s, opacity .15s;
+  /* ── Druck / PDF: nur den Monatskalender, so wie er auf dem Schirm aussieht ── */
+  @media print {
+    @page { size: A4 landscape; margin: 8mm; }
+    *, *::before, *::after {
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    body { background: #fff !important; }
+    /* Alles ausblenden, was nicht zum Plan gehört */
+    .app-header, .sync-bar, .alerts-bar, .stats-grid,
+    .btn, .btn-icon, .view-toggle-btn, .tbl-add, .add-shift-btn,
+    #signup-notification, #toast-msg, #admin-pin-screen { display: none !important; }
+    .tab-content { display: none !important; }
+    .tab-content.active { display: block !important; }
+    .panel { border: none !important; box-shadow: none !important; padding: 0 !important; }
+    .calendar-wrapper { overflow: visible !important; }
+    /* Kopfzeile des Ausdrucks */
+    .month-nav { display: block !important; }
+    .month-nav h2 { font-size: 15pt !important; margin: 0 0 4mm !important; }
+    #print-fuss { display: block !important; margin-top: 4mm; font-size: 7.5pt; color: #888; text-align: right; }
+    /* Kalender kompakt, damit ein Monat auf eine Seite passt */
+    .calendar-grid { gap: 1px !important; }
+    .cal-cell { min-height: 0 !important; padding: 2px 3px !important; break-inside: avoid; }
+    .cal-cell .day-number { font-size: 8pt !important; }
+    .shift-chip { font-size: 6.5pt !important; padding: 0 2px !important; line-height: 1.25 !important;
+                  margin: 0 0 1px !important; }
+    .chip-time { font-size: 6pt !important; }
+    .gap-label, .gap-label-none { font-size: 5.8pt !important; padding: 0 2px !important; }
+    .cal-header-day { font-size: 7.5pt !important; padding: 2px !important; }
+    .cal-row-label { font-size: 6.5pt !important; }
+    /* Farblegende bleibt auf dem Ausdruck — erklärt die Zellfarben */
+    .cov-legend { font-size: 7pt !important; padding: 1.5mm 2mm !important;
+                  margin-bottom: 3mm !important; gap: 5px !important; }
   }
-  .disp-table th.draggable-col:active { cursor: grabbing; }
-  .disp-table th.drag-over {
-    background: var(--teal) !important;
-    color: white !important;
-  }
-  .disp-table th.dragging {
-    opacity: .4;
-  }
-  .drag-handle {
-    display: block;
-    font-size: 9px;
-    color: rgba(255,255,255,.4);
-    letter-spacing: 1px;
-    margin-top: 1px;
-    line-height: 1;
-  }
-  .disp-table th.draggable-col:hover .drag-handle { color: rgba(255,255,255,.7); }
+  #print-fuss { display: none; }
 
+  /* ── Anfragen ── */
+  .req-badge{display:inline-block;min-width:18px;padding:1px 6px;margin-left:5px;border-radius:9px;
+    background:var(--accent,#C1502E);color:#fff;font-size:11px;font-weight:700;text-align:center}
+  .req-card{background:var(--warm-white);border:1px solid var(--border);border-radius:12px;
+    padding:14px 16px;margin-bottom:12px}
+  .req-card h3{font-family:'DM Serif Display',serif;font-size:17px;margin:0 0 10px;display:flex;
+    align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+  .req-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--border);flex-wrap:wrap}
+  .req-when{flex:1;min-width:190px;font-size:13px}
+  .req-type-remove{color:var(--accent,#C1502E);font-weight:600}
+  .req-decided{font-size:12px;color:var(--slate);padding:4px 0}
 
   /* ── Admin PIN screen ── */
   #admin-pin-screen {
@@ -934,6 +956,7 @@
     <button class="header-tab" onclick="showTab('nurses',this)">Pflegerinnen</button>
     <button class="header-tab" onclick="showTab('shifts',this)">Dienstarten</button>
     <button class="header-tab" onclick="showTab('reports',this)">Auswertung</button>
+    <button class="header-tab" id="requestsTabBtn" onclick="showTab('requests',this)">📨 Anfragen</button>
     <button class="header-tab" id="alertsTabBtn" onclick="showTab('alerts',this)">Warnungen</button>
     <button class="header-tab" onclick="showTab('history',this)">🕐 Verlauf</button>
     <button class="header-tab" id="myPlanTabBtn" onclick="showTab('myplan',this)" style="display:none">📋 Mein Plan</button>
@@ -991,8 +1014,12 @@
         <button class="btn-icon" onclick="changeMonth(-1)">←</button>
         <h2 id="month-title">—</h2>
         <button class="btn-icon" onclick="changeMonth(1)">→</button>
-        <button class="btn btn-secondary btn-sm" onclick="copySignupLink()" title="Link für Pflegerinnen kopieren" style="margin-left:8px">
-          🔗 Link kopieren
+        <button class="btn btn-secondary btn-sm" onclick="goToToday()" title="Zum aktuellen Monat" style="margin-left:4px">Heute</button>
+        <button class="btn btn-secondary btn-sm" onclick="copyViewLink()" title="Ansehen-Link zum Verschicken an die Pflegerinnen (Dienstplan anschauen)" style="margin-left:8px">
+          👁 Ansehen-Link
+        </button>
+        <button class="btn btn-secondary btn-sm" onclick="copySignupLink()" title="Eintrage-Link für diesen Monat (2 Tage gültig)" style="margin-left:4px">
+          🔗 Eintrage-Link
         </button>
         <button class="btn btn-secondary btn-sm" onclick="mergeSignups()" title="Neue Einträge von Pflegerinnen laden (überschreibt nichts)" style="margin-left:4px">
           🔄 Neue Einträge laden
@@ -1008,6 +1035,7 @@
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style="display:block"><rect x="1" y="1" width="12" height="12" rx="1.5" stroke="currentColor" stroke-width="1.3"/><path d="M1 4.5h12M1 8h12M1 11.5h12" stroke="currentColor" stroke-width="1.1"/><path d="M4.5 1v12M9.5 1v12" stroke="currentColor" stroke-width="1.1"/></svg>
           </button>
         </div>
+        <button class="btn btn-secondary btn-sm" onclick="druckeDienstplan()" title="Diese Ansicht als PDF sichern oder drucken">📄 Als PDF</button>
         <button class="btn btn-secondary btn-sm" onclick="exportICS()">📅 ICS exportieren</button>
         <button class="btn btn-secondary btn-sm" onclick="exportExcel()">📊 Excel exportieren</button>
         <button class="btn btn-teal btn-sm" onclick="runChecks()">✓ Prüfen</button>
@@ -1021,7 +1049,7 @@
 
     <div class="stats-grid" id="month-stats"></div>
 
-    <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;padding:8px 14px;background:var(--warm-white);border:1px solid var(--border);border-radius:var(--radius);font-size:11px;flex-wrap:wrap;">
+    <div class="cov-legend" style="display:flex;gap:10px;align-items:center;margin-bottom:12px;padding:8px 14px;background:var(--warm-white);border:1px solid var(--border);border-radius:var(--radius);font-size:11px;flex-wrap:wrap;">
       <span style="font-weight:600;color:var(--slate);font-size:10px;text-transform:uppercase;letter-spacing:.5px;margin-right:4px">Abdeckung 8–22 Uhr:</span>
       <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:#22C55E;flex-shrink:0"></span>Vollständig</span>
       <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:#EAB308;flex-shrink:0"></span>Lücke vorhanden</span>
@@ -1102,8 +1130,8 @@
       </div>
       <div class="form-group">
         <label class="form-label">Signup-Token <span style="font-weight:400;color:var(--slate)">(für Dienst-Eintragung durch Pflegerinnen)</span></label>
-        <input type="password" id="cfg-signup-token" class="form-input" placeholder="github_pat_..." autocomplete="off"/>
-        <div style="font-size:11px;color:var(--slate);margin-top:4px">Zweiter GitHub-Token (gleiche Schritte wie oben). Wird automatisch sicher gespeichert.</div>
+        <input type="password" id="cfg-signup-token" class="form-input" placeholder="Leer lassen = unverändert" autocomplete="off"/>
+        <div style="font-size:11px;color:var(--slate);margin-top:4px">Nur ausfüllen, wenn du einen <b>neuen</b> Signup-Token setzen willst. Leer lassen behält den bestehenden Token bei.</div>
       </div>
       <div class="form-group" style="margin-top:12px">
         <label class="form-label">PIN für Pflegerinnen <span style="font-weight:400;color:var(--slate)">(4-stellig — schützt den Pflegerin-Link)</span></label>
@@ -1156,6 +1184,12 @@
   </div>
 
   <!-- TAB: WARNUNGEN -->
+  <div id="tab-requests" class="tab-content">
+    <h2 style="font-family:'DM Serif Display',serif;font-size:22px;margin-bottom:2px">Anfragen der Pflegerinnen</h2>
+    <p style="font-size:12px;color:var(--slate);margin-bottom:14px">Erst nach deiner Bestätigung wird daraus ein Dienst im Plan.</p>
+    <div id="requests-list"></div>
+  </div>
+
   <div id="tab-alerts" class="tab-content">
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">
       <div style="display:flex;align-items:center;gap:10px">
@@ -1164,6 +1198,7 @@
           <button class="btn-icon" onclick="changeAlertsMonth(-1)">←</button>
           <span id="alerts-month-title" style="font-family:'DM Serif Display',serif;font-size:18px;min-width:160px;text-align:center">—</span>
           <button class="btn-icon" onclick="changeAlertsMonth(1)">→</button>
+          <button class="btn btn-secondary btn-sm" onclick="goToAlertsToday()" title="Zum aktuellen Monat">Heute</button>
         </div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap" id="alerts-action-btns" style="display:none">
@@ -1282,6 +1317,8 @@ let state = {
   viewYear: 2026,
   viewMonth: 0,
   pin: '',
+  // Anfragen der Pflegerinnen (Freigabe-Verfahren)
+  requests: [],
   // "Gelöscht"-Merkliste: verhindert, dass vom Admin gelöschte Pflegerinnen-
   // Einträge durch den GitHub-Abgleich wieder zurückkommen.
   // Schlüssel → addedAt des gelöschten Eintrags (zur Unterscheidung von Neu-Einträgen)
@@ -1294,34 +1331,22 @@ function signupKey(date, a) {
 }
 
 // Nurse column order (array of nurse IDs) — persisted in localStorage
-let nurseOrder = [];
+// Einheitliche alphabetische Sortierung (deutsch) für ALLE Pflegerinnen-Auflistungen
+function byNurseName(a, b) { return (a.name || '').localeCompare(b.name || '', 'de', { sensitivity: 'base' }); }
+function sortedNurses(list) { return [...list].sort(byNurseName); }
 
 function getNurseOrder() {
-  // Returns active nurses in current display order
-  const active = state.nurses.filter(n => n.active);
-  // Keep saved order, add any new nurses at end, remove departed ones
-  const activeIds = new Set(active.map(n => n.id));
-  const ordered = nurseOrder.filter(id => activeIds.has(id));
-  active.forEach(n => { if (!ordered.includes(n.id)) ordered.push(n.id); });
-  nurseOrder = ordered;
-  return ordered.map(id => state.nurses.find(n => n.id === id)).filter(Boolean);
-}
-
-function saveNurseOrder() {
-  localStorage.setItem('pflegedispo_nurse_order', JSON.stringify(nurseOrder));
-}
-
-function loadNurseOrder() {
-  try {
-    const saved = localStorage.getItem('pflegedispo_nurse_order');
-    if (saved) nurseOrder = JSON.parse(saved);
-  } catch(e) {}
+  // Aktive Pflegerinnen alphabetisch — einheitlich mit allen anderen Fenstern
+  return state.nurses.filter(n => n.active).sort(byNurseName);
 }
 
 // ── Cloud config (GitHub) ──────────────────────────────────────────────────
 // Die Daten liegen seit Juli 2026 aus Datenschutzgründen im PRIVATEN Repo
 // Webervik/dispo-daten (vorher öffentlich in webervik/personaldispo).
 let cloudCfg = { githubToken: '', githubRepo: 'Webervik/dispo-daten', githubFile: 'daten.json', githubBranch: 'main', githubUrl: '', signupToken: '' };
+// Zuletzt von GitHub gelesener Signup-Token (wte, rückwärts gespeichert). Wird beim
+// Speichern beibehalten, damit ein veralteter lokaler Token ihn nicht überschreibt.
+let _remoteWte = null;
 
 function loadCloudConfig() {
   try {
@@ -1336,6 +1361,16 @@ function loadCloudConfig() {
     if (/^webervik\/personaldispo$/i.test(cloudCfg.githubRepo)) {
       cloudCfg.githubRepo = 'Webervik/dispo-daten';
       localStorage.setItem('pflegedispo_cloud', JSON.stringify(cloudCfg));
+    }
+  } catch(e) {}
+  // Einrichtungs-Link ?t=TOKEN — Token einmalig je Gerät übernehmen (für Handy/Tablet),
+  // danach sofort aus der Adressleiste entfernen, damit er nicht im Verlauf landet.
+  try {
+    const urlToken = new URLSearchParams(window.location.search).get('t');
+    if (urlToken) {
+      cloudCfg.githubToken = urlToken;
+      localStorage.setItem('pflegedispo_cloud', JSON.stringify(cloudCfg));
+      history.replaceState(null, '', window.location.pathname);
     }
   } catch(e) {}
 }
@@ -1424,9 +1459,12 @@ async function saveToCloud() {
   const pinEl = document.getElementById('cfg-pin');
   if (pinEl) state.pin = pinEl.value.trim();
 
+  // Nur ein NEU ins Feld getippter Token gilt als bewusste Änderung. Ist das Feld leer,
+  // wird der auf GitHub vorhandene Signup-Token beibehalten (_remoteWte) — so überschreibt
+  // ein Save nicht mehr einen funktionierenden Token mit einem veralteten lokalen.
   const signupTokenEl = document.getElementById('cfg-signup-token');
-  const signupToken = signupTokenEl?.value.trim() || cloudCfg.signupToken || '';
-  if (signupToken) cloudCfg.signupToken = signupToken;
+  const typedToken = signupTokenEl?.value.trim() || '';
+  if (typedToken) cloudCfg.signupToken = typedToken;
   const putUrl = `https://api.github.com/repos/${cloudCfg.githubRepo}/contents/${cloudCfg.githubFile}`;
 
   // Inhalt bei JEDEM Versuch frisch aus dem aktuellen State bauen — so enthält ein
@@ -1438,8 +1476,12 @@ async function saveToCloud() {
       shiftTypes: state.shiftTypes,
       assignments: state.assignments,
       pin: state.pin || '',
-      // Token umgekehrt gespeichert — GitHub erkennt das Muster so nicht
-      wte: signupToken ? signupToken.split('').reverse().join('') : (cloudCfg.signupToken ? cloudCfg.signupToken.split('').reverse().join('') : ''),
+      requests: state.requests || [],
+      // Signup-Token (umgekehrt, damit GitHub-Secret-Scanning nicht anschlägt).
+      // Reihenfolge: 1) neu eingetippter Token  2) von GitHub beibehaltener (funktionierender)
+      // Token  3) lokal gespeicherter Alt-Token als letzter Fallback.
+      wte: typedToken ? typedToken.split('').reverse().join('')
+         : (_remoteWte || (cloudCfg.signupToken ? cloudCfg.signupToken.split('').reverse().join('') : '')),
     };
     const str = JSON.stringify(payload, null, 2);
     const bytes = new TextEncoder().encode(str); let b=''; bytes.forEach(x=>b+=String.fromCharCode(x));
@@ -1485,6 +1527,7 @@ async function loadFromCloud() {
   setSyncStatus('saving', 'Wird von GitHub geladen…');
   try {
     const { data: s } = await _fetchRemoteData();
+    state.requests    = Array.isArray(s.requests) ? s.requests : (state.requests || []);
     state.nurses      = s.nurses      || state.nurses;
     state.shiftTypes  = s.shiftTypes  || state.shiftTypes;
     state.assignments = s.assignments || state.assignments;
@@ -1525,10 +1568,32 @@ async function _fetchRemoteData() {
 // Gibt Liste neu hinzugefügter Einträge zurück.
 async function _fetchAndMerge() {
   const { data: remote, authoritative } = await _fetchRemoteData();
+  // Den auf GitHub vorhandenen Signup-Token (wte, rückwärts) merken, damit ein
+  // Admin-Save ihn beibehält statt mit einem veralteten lokalen Token zu überschreiben.
+  if (typeof remote.wte === 'string' && remote.wte) _remoteWte = remote.wte;
   const remoteAssign = remote.assignments || {};
 
   const added = [];   // { nurseName, date, start, end }
   let removedCount = 0;
+
+  // ── Anfragen der Pflegerinnen abgleichen ────────────────────────────────
+  // Pflegerinnen schreiben nur in diese Liste; Entscheidungen trifft der Admin.
+  const remoteReqs = Array.isArray(remote.requests) ? remote.requests : [];
+  if (!Array.isArray(state.requests)) state.requests = [];
+  const localById = new Map(state.requests.map(r => [r.id, r]));
+  let newReqCount = 0;
+  remoteReqs.forEach(rr => {
+    const mine = localById.get(rr.id);
+    if (!mine) { state.requests.push(rr); localById.set(rr.id, rr); if (rr.status === 'pending') newReqCount++; }
+    // Liegt lokal bereits eine Entscheidung vor, gilt die lokale Fassung.
+  });
+  if (authoritative) {
+    // Offene Anfragen, die remote fehlen → von der Pflegerin zurückgezogen
+    const remoteIds = new Set(remoteReqs.map(r => r.id));
+    const keptReqs = state.requests.filter(r => r.status !== 'pending' || remoteIds.has(r.id));
+    if (keptReqs.length !== state.requests.length) { state.requests = keptReqs; removedCount++; }
+  }
+  if (newReqCount > 0) { removedCount++; updateRequestBadge(); }
 
   // Menge aller Pflegerinnen-Einträge, die laut GitHub aktuell existieren
   const remoteNurseKeys = new Set();
@@ -1619,12 +1684,14 @@ function startSignupPolling() {
   _pollInterval = setInterval(async () => {
     if (!cloudCfg.githubRepo || !cloudCfg.githubToken) return;
     try {
+      const before = pendingRequests().length;
       const added = await _fetchAndMerge();
       if (added.length > 0) {
         const now = new Date().toLocaleTimeString('de-DE', {hour:'2-digit',minute:'2-digit'});
         setSyncStatus('ok', `${added.length} neue Eintrag/Einträge um ${now}`);
         showSignupNotification(added);
       }
+      notifyNewRequests(before);
     } catch(e) {
       // Stiller Fehler beim automatischen Poll — nicht stören
       console.warn('Hintergrund-Poll Fehler:', e.message);
@@ -1745,6 +1812,30 @@ function exitNurseView() {
 }
 
 // ── State functions ────────────────────────────────────────────────────────
+// Dienste entfernen, deren Pflegerin es nicht mehr gibt ("Geisterdienste").
+// Sie entstehen, wenn eine Pflegerin gelöscht wird, ihre Einträge aber auf einem
+// anderen Gerät überleben und von dort wieder hochgeladen werden. Im Kalender
+// erscheinen sie namenlos als "?" und verfälschen Warnungen und Statistik.
+// Schutz: läuft nur, wenn überhaupt Pflegerinnen geladen sind — nie auf leerer Liste.
+function cleanOrphanAssignments() {
+  if (!Array.isArray(state.nurses) || state.nurses.length === 0) return 0;
+  const ids = new Set(state.nurses.map(n => n.id));
+  let removed = 0;
+  for (const [date, list] of Object.entries(state.assignments)) {
+    if (!Array.isArray(list)) continue;
+    const kept = list.filter(a => ids.has(a.nurseId));
+    if (kept.length === list.length) continue;
+    removed += list.length - kept.length;
+    if (kept.length) state.assignments[date] = kept;
+    else delete state.assignments[date];
+  }
+  if (removed > 0) {
+    console.warn(`${removed} verwaiste Dienste entfernt (Pflegerin nicht mehr vorhanden).`);
+    saveState();
+  }
+  return removed;
+}
+
 function loadState() {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -1757,6 +1848,7 @@ function loadState() {
         state.viewYear    = s.viewYear    || 2026;
         state.viewMonth   = typeof s.viewMonth === 'number' ? s.viewMonth : 0;
         state.deletedSignups = s.deletedSignups || {};
+        state.requests = Array.isArray(s.requests) ? s.requests : [];
         return;
       }
     }
@@ -1774,6 +1866,7 @@ function saveState() {
     viewYear: state.viewYear,
     viewMonth: state.viewMonth,
     deletedSignups: state.deletedSignups,
+    requests: state.requests,
   }));
   // Auto-sync to GitHub if token is configured (debounced)
   if (cloudCfg.githubToken && cloudCfg.githubRepo) {
@@ -1879,6 +1972,13 @@ function changeMonth(delta) {
   state.viewMonth += delta;
   if (state.viewMonth < 0) { state.viewMonth = 11; state.viewYear--; }
   if (state.viewMonth > 11) { state.viewMonth = 0; state.viewYear++; }
+  renderCalendar();
+  updateReportMonthSelect();
+}
+function goToToday() {
+  const now = new Date();
+  state.viewYear = now.getFullYear();
+  state.viewMonth = now.getMonth();
   renderCalendar();
   updateReportMonthSelect();
 }
@@ -2281,6 +2381,12 @@ function changeAlertsMonth(delta) {
   alertsViewMonth = m;
   runChecks();
 }
+function goToAlertsToday() {
+  const now = new Date();
+  alertsViewYear  = now.getFullYear();
+  alertsViewMonth = now.getMonth();
+  runChecks();
+}
 
 // calY/calM: optionaler Override für die alerts-bar im Dienstplan-Tab
 // Ohne Args: Warnungen-Tab-Monat wird für beides verwendet
@@ -2418,7 +2524,7 @@ function openEditShiftModal(key, idx) {
 }
 
 function renderShiftModalContent(existing) {
-  const activeNurses = state.nurses.filter(n => n.active);
+  const activeNurses = sortedNurses(state.nurses.filter(n => n.active));
   const container = document.getElementById('shift-modal-content');
 
   const nurseOptions = activeNurses.map(n =>
@@ -2508,6 +2614,12 @@ function saveShift() {
       };
 
   if (_modalIdx !== null) {
+    // Wird ein Pflegerinnen-Eintrag durch Bearbeiten verändert/ersetzt, merken wir den
+    // alten Eintrag, damit der GitHub-Abgleich ihn nicht wieder zurückholt.
+    const old = getAssignments(_modalKey)[_modalIdx];
+    if (old && old.addedBy === 'nurse' && signupKey(_modalKey, old) !== signupKey(_modalKey, newEntry)) {
+      state.deletedSignups[signupKey(_modalKey, old)] = old.addedAt || new Date().toISOString();
+    }
     assigns[_modalIdx] = newEntry;
   } else {
     assigns.push(newEntry);
@@ -2543,7 +2655,7 @@ function closeShiftModal() {
 function renderNurses() {
   const list = document.getElementById('nurses-list');
   list.innerHTML = '';
-  state.nurses.forEach((n, i) => {
+  sortedNurses(state.nurses).forEach((n, i) => {
     const item = document.createElement('div');
     item.className = 'nurse-item';
     item.innerHTML = `
@@ -2551,6 +2663,8 @@ function renderNurses() {
       <span class="nurse-name">${n.name}</span>
       ${n.notes ? `<span style="font-size:11px;color:var(--slate);">${n.notes}</span>` : ''}
       <span class="nurse-status ${n.active ? 'active' : 'inactive'}">${n.active ? 'Aktiv' : 'Inaktiv'}</span>
+      <button class="btn btn-secondary btn-sm" onclick="setNursePin('${n.id}')"
+        title="Persönlicher Code zum Schutz vor Verwechslung">${n.pinHash ? '🔑 Code ✓' : '🔓 Code setzen'}</button>
       <button class="nurse-toggle" onclick="toggleNurse('${n.id}')" title="${n.active ? 'Deaktivieren' : 'Aktivieren'}">
         ${n.active ? '●' : '○'}
       </button>
@@ -2566,11 +2680,49 @@ function toggleNurse(id) {
 }
 
 function removeNurse(id) {
-  if (!confirm('Pflegerin entfernen?')) return;
+  if (!confirm('Pflegerin entfernen? Alle ihre Diensteinträge werden ebenfalls entfernt.')) return;
   state.nurses = state.nurses.filter(n => n.id !== id);
+  // Auch alle Diensteinträge dieser Pflegerin entfernen. Pflegerinnen-Einträge dabei
+  // als gelöscht vermerken, damit der GitHub-Abgleich sie nicht wieder zurückholt.
+  for (const [date, list] of Object.entries(state.assignments)) {
+    if (!Array.isArray(list)) continue;
+    const kept = list.filter(a => {
+      if (a.nurseId !== id) return true;
+      if (a.addedBy === 'nurse') state.deletedSignups[signupKey(date, a)] = a.addedAt || new Date().toISOString();
+      return false;
+    });
+    if (kept.length !== list.length) {
+      if (kept.length) state.assignments[date] = kept;
+      else delete state.assignments[date];
+    }
+  }
   saveState();
   renderNurses();
   renderCalendar();
+}
+
+// Persönlicher Code je Pflegerin — verhindert, dass sich jemand (auch versehentlich)
+// als eine andere ausgibt und deren Dienste ändert.
+function setNursePin(id){
+  const n = state.nurses.find(x => x.id === id);
+  if (!n) return;
+  const val = prompt(
+    `Persönlicher Code für ${n.name}\n\n` +
+    `4 Ziffern eingeben und der Pflegerin mitteilen.\n` +
+    `Aktuell: ${n.pinHash ? 'Code ist gesetzt' : 'kein Code'}\n\n` +
+    `Feld leer lassen = Code wieder entfernen.`, '');
+  if (val === null) return;
+  const v = val.trim();
+  if (!v) {
+    delete n.pinHash;
+    saveState(); renderNurses();
+    showToast(`Code für ${n.name} entfernt`);
+    return;
+  }
+  if (!/^\d{4}$/.test(v)) { alert('Bitte genau 4 Ziffern eingeben.'); return; }
+  n.pinHash = nursePinHash(n.id, v);
+  saveState(); renderNurses();
+  showToast(`🔑 Code für ${n.name} gesetzt: ${v}`);
 }
 
 function openAddNurseModal() {
@@ -2692,7 +2844,7 @@ function renderReports() {
       <th>Status</th>
     </tr></thead><tbody>`;
 
-  state.nurses.forEach(n => {
+  sortedNurses(state.nurses).forEach(n => {
     const s = nurseStats[n.id] || { shifts: 0, hours: 0, vacationDays: 0, shiftList: [] };
     html += `<tr>
       <td><strong>${n.name}</strong>${!n.active ? ' <em style="color:var(--slate);font-size:11px;">(inaktiv)</em>' : ''}</td>
@@ -2793,6 +2945,7 @@ function showTab(tab, btn) {
   if (tab === 'nurses')   renderNurses();
   if (tab === 'shifts')   renderShiftTypes();
   if (tab === 'alerts')   runChecks();
+  if (tab === 'requests') renderRequests();
   if (tab === 'myplan')   { renderNursePicker('nurse-picker', null); renderPersonalSchedule(); }
   if (tab === 'settings') initSettingsTab();
   if (tab === 'history')  loadHistory();
@@ -2839,10 +2992,9 @@ function renderTableView() {
   orderedNurses.forEach((n, colIdx) => {
     const firstName = n.name.split(' ')[0];
     const lastName  = n.name.split(' ').slice(1).join(' ');
-    html += `<th class="draggable-col" data-nurse-id="${n.id}" draggable="true">
+    html += `<th data-nurse-id="${n.id}">
       ${firstName}<br>
       <span style="font-weight:400;opacity:.7;font-size:9px">${lastName}</span>
-      <span class="drag-handle">⠿⠿⠿</span>
     </th>`;
   });
   html += '</tr></thead><tbody>';
@@ -2894,95 +3046,6 @@ function renderTableView() {
 
   html += '</tbody></table>';
   document.getElementById('table-grid').innerHTML = html;
-
-  // Wire up drag & drop on the rendered headers
-  initColumnDrag();
-}
-
-// ── Column drag & drop ────────────────────────────────────────────────────────
-function initColumnDrag() {
-  const table = document.getElementById('disp-table-el');
-  if (!table) return;
-  const headers = table.querySelectorAll('th.draggable-col');
-
-  let dragSrcId = null;   // nurseId being dragged
-  let dragSrcTh = null;   // the <th> element
-
-  headers.forEach(th => {
-    th.addEventListener('dragstart', e => {
-      dragSrcId = th.dataset.nurseId;
-      dragSrcTh = th;
-      th.classList.add('dragging');
-      e.dataTransfer.effectAllowed = 'move';
-      e.dataTransfer.setData('text/plain', dragSrcId);
-    });
-
-    th.addEventListener('dragend', () => {
-      th.classList.remove('dragging');
-      table.querySelectorAll('th.drag-over').forEach(el => el.classList.remove('drag-over'));
-    });
-
-    th.addEventListener('dragover', e => {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-      if (th.dataset.nurseId !== dragSrcId) {
-        table.querySelectorAll('th.drag-over').forEach(el => el.classList.remove('drag-over'));
-        th.classList.add('drag-over');
-      }
-    });
-
-    th.addEventListener('dragleave', () => {
-      th.classList.remove('drag-over');
-    });
-
-    th.addEventListener('drop', e => {
-      e.preventDefault();
-      const targetId = th.dataset.nurseId;
-      if (!dragSrcId || dragSrcId === targetId) return;
-
-      // Reorder nurseOrder array
-      const srcIdx = nurseOrder.indexOf(dragSrcId);
-      const tgtIdx = nurseOrder.indexOf(targetId);
-      if (srcIdx === -1 || tgtIdx === -1) return;
-
-      // Remove from src, insert at target position
-      nurseOrder.splice(srcIdx, 1);
-      nurseOrder.splice(tgtIdx, 0, dragSrcId);
-
-      saveNurseOrder();
-
-      // Smooth DOM reorder — no full re-render needed, just move columns
-      reorderTableColumns(dragSrcId, targetId);
-
-      th.classList.remove('drag-over');
-    });
-  });
-}
-
-// Move columns in the live DOM (fast, no full re-render)
-function reorderTableColumns(srcId, tgtId) {
-  const table = document.getElementById('disp-table-el');
-  if (!table) return;
-
-  // Find column indices (1-based, 0 is date col)
-  const headers = Array.from(table.querySelectorAll('thead th'));
-  const srcCol  = headers.findIndex(th => th.dataset?.nurseId === srcId);
-  const tgtCol  = headers.findIndex(th => th.dataset?.nurseId === tgtId);
-  if (srcCol === -1 || tgtCol === -1) return;
-
-  const rows = table.querySelectorAll('tr');
-  rows.forEach(row => {
-    const cells = Array.from(row.children);
-    if (cells.length <= Math.max(srcCol, tgtCol)) return;
-    const srcCell = cells[srcCol];
-    const tgtCell = cells[tgtCol];
-    // Insert src before or after target depending on direction
-    if (srcCol < tgtCol) {
-      row.insertBefore(srcCell, tgtCell.nextSibling);
-    } else {
-      row.insertBefore(srcCell, tgtCell);
-    }
-  });
 }
 
 // Patch changeMonth to also refresh table if visible
@@ -2996,7 +3059,7 @@ let selectedNurseId = null;
 function renderNursePicker(containerId, onSelect) {
   const el = document.getElementById(containerId);
   if (!el) return;
-  el.innerHTML = state.nurses.filter(n => n.active).map(n =>
+  el.innerHTML = sortedNurses(state.nurses.filter(n => n.active)).map(n =>
     `<button class="nurse-pick-btn${selectedNurseId === n.id ? ' selected' : ''}"
       onclick="selectNurse('${n.id}','${containerId}',${JSON.stringify(onSelect).replace(/"/g,"'")})">${n.name}</button>`
   ).join('');
@@ -3105,12 +3168,38 @@ function initSettingsTab() {
   const signupEl = document.getElementById('cfg-signup-token');
   if (tokenEl)  tokenEl.value  = cloudCfg.githubToken  || '';
   if (repoEl)   repoEl.value   = cloudCfg.githubRepo   || 'Webervik/dispo-daten';
-  if (signupEl) signupEl.value = cloudCfg.signupToken || '';
+  // Signup-Token-Feld bewusst LEER lassen: leer = auf GitHub vorhandenen Token beibehalten.
+  // Nur ein neu eingetippter Wert ändert den Token. Verhindert, dass ein alter, lokal
+  // gespeicherter Token beim Speichern einen funktionierenden Token überschreibt.
+  if (signupEl) signupEl.value = '';
   document.getElementById('cfg-pin').value = state.pin || '';
   applyCloudConfig();
   renderNursePicker('settings-nurse-picker', null);
 }
 
+
+// Druckt genau die aktuelle Kalenderansicht (Druckdialog → "Als PDF sichern")
+function druckeDienstplan() {
+  // Sicherstellen, dass die Kalenderansicht aktiv ist — die Tabellenansicht
+  // ist für Papier zu breit.
+  if (typeof currentView !== 'undefined' && currentView !== 'calendar') {
+    setView('calendar');
+  }
+  let fuss = document.getElementById('print-fuss');
+  if (!fuss) {
+    fuss = document.createElement('div');
+    fuss.id = 'print-fuss';
+    document.getElementById('tab-plan').appendChild(fuss);
+  }
+  fuss.textContent = 'Stand: ' + new Date().toLocaleString('de-DE');
+  setTimeout(() => window.print(), 100);
+}
+
+function copyViewLink() {
+  // Grund-Link zum ANSEHEN des Dienstplans (immer gültig, kein Ablaufdatum).
+  const base = cloudCfg.githubUrl || 'https://webervik.github.io/personaldispo/';
+  navigator.clipboard.writeText(base).then(() => showToast('👁 Ansehen-Link kopiert'));
+}
 
 function copySignupLink() {
   const Y = state.viewYear;
@@ -3247,7 +3336,7 @@ function exportExcel() {
 
   const wb = XLSX.utils.book_new();
   const now = new Date();
-  const activeNurses = state.nurses.filter(n => n.active);
+  const activeNurses = sortedNurses(state.nurses.filter(n => n.active));
 
   // One sheet per month
   for (let offset = 0; offset < 12; offset++) {
@@ -3344,7 +3433,7 @@ function exportExcel() {
 initAdminPin();
 loadCloudConfig();
 loadState();
-loadNurseOrder();
+cleanOrphanAssignments();
 // Check for nurse view URL params (async)
 (async () => {
   const isNurseView = await initNurseViewIfNeeded();
@@ -3356,12 +3445,15 @@ loadNurseOrder();
     renderCalendar();
     renderNurses();
     renderShiftTypes();
+    updateRequestBadge();
     // Sofort einmal abgleichen, statt auf den ersten 60-Sek.-Tick zu warten
     (async () => {
       if (!cloudCfg.githubRepo || !cloudCfg.githubToken) return;
       try {
+        const before = pendingRequests().length;
         const added = await _fetchAndMerge();
         if (added.length > 0) showSignupNotification(added);
+        notifyNewRequests(before);
       } catch(e) {
         console.warn('Initialer Merge fehlgeschlagen:', e.message);
       }
@@ -3370,6 +3462,218 @@ loadNurseOrder();
     startSignupPolling();
   }
 })();
+// ── Persönlicher Code (SHA-256, ohne externe Bibliothek) ────────────────────
+// Der Code wird nur als Prüfsumme gespeichert — er steht nirgends im Klartext.
+function sha256Hex(str){
+  const K=[0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+  0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+  0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+  0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+  0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+  0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+  0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+  0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+  let H=[0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+  const bytes=new TextEncoder().encode(str), l=bytes.length;
+  const k=(56-(l+1)%64+64)%64, total=l+1+k+8;
+  const m=new Uint8Array(total); m.set(bytes); m[l]=0x80;
+  const dv=new DataView(m.buffer);
+  dv.setUint32(total-8, Math.floor(l*8/4294967296), false);
+  dv.setUint32(total-4, (l*8)>>>0, false);
+  const w=new Uint32Array(64), rotr=(x,n)=>(x>>>n)|(x<<(32-n));
+  for(let i=0;i<total;i+=64){
+    for(let t=0;t<16;t++) w[t]=dv.getUint32(i+t*4,false);
+    for(let t=16;t<64;t++){
+      const s0=rotr(w[t-15],7)^rotr(w[t-15],18)^(w[t-15]>>>3);
+      const s1=rotr(w[t-2],17)^rotr(w[t-2],19)^(w[t-2]>>>10);
+      w[t]=(w[t-16]+s0+w[t-7]+s1)>>>0;
+    }
+    let [a,b,c,d,e,f,g,h]=H;
+    for(let t=0;t<64;t++){
+      const S1=rotr(e,6)^rotr(e,11)^rotr(e,25), ch=(e&f)^(~e&g);
+      const t1=(h+S1+ch+K[t]+w[t])>>>0;
+      const S0=rotr(a,2)^rotr(a,13)^rotr(a,22), maj=(a&b)^(a&c)^(b&c);
+      const t2=(S0+maj)>>>0;
+      h=g;g=f;f=e;e=(d+t1)>>>0;d=c;c=b;b=a;a=(t1+t2)>>>0;
+    }
+    H=[(H[0]+a)>>>0,(H[1]+b)>>>0,(H[2]+c)>>>0,(H[3]+d)>>>0,(H[4]+e)>>>0,(H[5]+f)>>>0,(H[6]+g)>>>0,(H[7]+h)>>>0];
+  }
+  return H.map(x=>x.toString(16).padStart(8,'0')).join('');
+}
+function nursePinHash(nurseId, pin){ return sha256Hex(nurseId+':'+pin); }
+
+// ══ ANFRAGEN DER PFLEGERINNEN (Freigabe-Verfahren) ══════════════════════════
+function pendingRequests(){ return (state.requests||[]).filter(r=>r.status==='pending'); }
+
+// Popup, wenn seit dem letzten Abgleich neue Anfragen eingegangen sind
+function notifyNewRequests(countBefore){
+  const jetzt = pendingRequests().length;
+  updateRequestBadge();
+  const neu = jetzt - countBefore;
+  if (neu <= 0) return;
+  const namen = [...new Set(pendingRequests().map(r => getNurse(r.nurseId)?.name || ''))]
+                  .filter(Boolean).join(', ');
+  showToast(`📨 ${neu} neue Anfrage${neu===1?'':'n'} (${namen}) — Tab „Anfragen"`);
+  if (typeof renderRequests === 'function' &&
+      document.getElementById('tab-requests')?.classList.contains('active')) renderRequests();
+}
+
+function updateRequestBadge(){
+  const btn=document.getElementById('requestsTabBtn');
+  if(!btn) return;
+  const n=pendingRequests().length;
+  btn.innerHTML = n>0 ? `📨 Anfragen <span class="req-badge">${n}</span>` : '📨 Anfragen';
+}
+
+function _reqDateLabel(r){
+  const [y,m,d]=r.date.split('-').map(Number);
+  const dt=new Date(y,m-1,d);
+  return `${DAYS_DE[dt.getDay()]}, ${d}. ${MONTHS_DE[m-1]} ${y}`;
+}
+function _reqTimeLabel(r){ return `${r.customStart}–${r.customEnd}`; }
+
+function renderRequests(){
+  updateRequestBadge();
+  const el=document.getElementById('requests-list');
+  if(!el) return;
+  const all=state.requests||[];
+  const pend=all.filter(r=>r.status==='pending');
+  const decidedOpen=all.filter(r=>r.status!=='pending' && !r.notified);
+
+  let html='';
+
+  if(!pend.length && !decidedOpen.length){
+    html='<p style="color:var(--slate);padding:30px;text-align:center">Keine offenen Anfragen.</p>';
+  }
+
+  // Offene Anfragen, gruppiert nach Pflegerin
+  const byNurse={};
+  pend.forEach(r=>{ (byNurse[r.nurseId]=byNurse[r.nurseId]||[]).push(r); });
+  Object.keys(byNurse)
+    .sort((a,b)=>(getNurse(a)?.name||'').localeCompare(getNurse(b)?.name||'','de'))
+    .forEach(nid=>{
+      const rs=byNurse[nid].sort((a,b)=>a.date.localeCompare(b.date));
+      const nurse=getNurse(nid);
+      html+=`<div class="req-card">
+        <h3><span>${nurse?nurse.name:nid} <span style="font-weight:400;font-size:13px;color:var(--slate)">· ${rs.length} offen</span></span>
+          <button class="btn btn-primary btn-sm" onclick="approveAllForNurse('${nid}')">Alle bestätigen</button>
+        </h3>`;
+      rs.forEach(r=>{
+        html+=`<div class="req-row">
+          <span class="req-when">${_reqDateLabel(r)} · ${_reqTimeLabel(r)}
+            ${r.type==='remove'?'<span class="req-type-remove">· Abmeldung</span>':''}</span>
+          <button class="btn btn-primary btn-sm" onclick="approveRequest('${r.id}')">✓ Bestätigen</button>
+          <button class="btn btn-secondary btn-sm" onclick="rejectRequest('${r.id}')">✗ Ablehnen</button>
+        </div>`;
+      });
+      html+='</div>';
+    });
+
+  // Entschieden, aber noch nicht rückgemeldet
+  if(decidedOpen.length){
+    const byN2={};
+    decidedOpen.forEach(r=>{ (byN2[r.nurseId]=byN2[r.nurseId]||[]).push(r); });
+    html+='<h3 style="font-family:\'DM Serif Display\',serif;font-size:17px;margin:22px 0 10px">Entschieden — Rückmeldung offen</h3>';
+    Object.keys(byN2)
+      .sort((a,b)=>(getNurse(a)?.name||'').localeCompare(getNurse(b)?.name||'','de'))
+      .forEach(nid=>{
+        const rs=byN2[nid];
+        const nurse=getNurse(nid);
+        html+=`<div class="req-card">
+          <h3><span>${nurse?nurse.name:nid}</span>
+            <span style="display:flex;gap:6px;flex-wrap:wrap">
+              <button class="btn btn-primary btn-sm" onclick="notifyNurse('${nid}')">📱 Per WhatsApp mitteilen</button>
+              <button class="btn btn-secondary btn-sm" onclick="markNotified('${nid}')" title="Ohne Nachricht als erledigt markieren">Erledigt</button>
+            </span>
+          </h3>`;
+        rs.sort((a,b)=>a.date.localeCompare(b.date)).forEach(r=>{
+          html+=`<div class="req-decided">${r.status==='approved'?'✅':'❌'} ${_reqDateLabel(r)} · ${_reqTimeLabel(r)}${r.type==='remove'?' (Abmeldung)':''}${r.reason?` — ${r.reason}`:''}</div>`;
+        });
+        html+='</div>';
+      });
+  }
+
+  el.innerHTML=html;
+}
+
+function approveRequest(id, silent){
+  const r=(state.requests||[]).find(x=>x.id===id);
+  if(!r || r.status!=='pending') return;
+
+  if(r.type==='add'){
+    const list=[...getAssignments(r.date)];
+    const dup=list.some(a=>a.nurseId===r.nurseId &&
+      (a.customStart||'08:00')===r.customStart && (a.customEnd||'22:00')===r.customEnd);
+    if(!dup){
+      list.push({ nurseId:r.nurseId, shiftTypeId:r.shiftTypeId,
+        customStart:r.customStart, customEnd:r.customEnd, vacation:false, note:'',
+        addedAt:new Date().toISOString(), addedBy:'admin', viaRequest:true });
+      setAssignments(r.date, list);
+    }
+  } else {
+    const list=getAssignments(r.date).filter(a=>{
+      const match = a.nurseId===r.nurseId &&
+        (a.customStart||'08:00')===r.customStart && (a.customEnd||'22:00')===r.customEnd;
+      // Alt-Einträge der Pflegerin als gelöscht merken, damit sie nicht zurückkommen
+      if(match && a.addedBy==='nurse'){
+        state.deletedSignups[signupKey(r.date,a)] = a.addedAt || new Date().toISOString();
+      }
+      return !match;
+    });
+    setAssignments(r.date, list);
+  }
+
+  r.status='approved';
+  r.decidedAt=new Date().toISOString();
+  if(!silent){ saveState(); renderRequests(); renderCalendar(); }
+}
+
+function approveAllForNurse(nid){
+  const rs=pendingRequests().filter(r=>r.nurseId===nid);
+  if(!rs.length) return;
+  const nurse=getNurse(nid);
+  if(!confirm(`Alle ${rs.length} Anfragen von ${nurse?nurse.name:''} bestätigen?`)) return;
+  rs.forEach(r=>approveRequest(r.id, true));
+  saveState(); renderRequests(); renderCalendar();
+  showToast(`✅ ${rs.length} Anfragen bestätigt`);
+}
+
+function rejectRequest(id){
+  const r=(state.requests||[]).find(x=>x.id===id);
+  if(!r || r.status!=='pending') return;
+  const grund=prompt('Grund der Ablehnung (optional — die Pflegerin sieht ihn):','');
+  if(grund===null) return; // abgebrochen
+  r.status='rejected';
+  r.reason=grund.trim();
+  r.decidedAt=new Date().toISOString();
+  saveState(); renderRequests();
+}
+
+// Rückmeldung per WhatsApp — Text wird vorbereitet, Empfängerin wählst du in WhatsApp
+function notifyNurse(nid){
+  const rs=(state.requests||[]).filter(r=>r.nurseId===nid && r.status!=='pending' && !r.notified);
+  if(!rs.length){ showToast('Keine offenen Rückmeldungen'); return; }
+  const nurse=getNurse(nid);
+  const vorname=nurse ? nurse.name.split(' ')[0] : '';
+  const ok=rs.filter(r=>r.status==='approved');
+  const no=rs.filter(r=>r.status==='rejected');
+  const fmt=r=>`${_reqDateLabel(r)} ${_reqTimeLabel(r)}${r.type==='remove'?' (Abmeldung)':''}`;
+
+  let txt=`Hallo ${vorname}, hier die Rückmeldung zu deinen Anfragen:\n`;
+  if(ok.length) txt+=`\n✅ Bestätigt:\n`+ok.map(r=>'• '+fmt(r)).join('\n')+'\n';
+  if(no.length) txt+=`\n❌ Leider nicht möglich:\n`+no.map(r=>'• '+fmt(r)+(r.reason?` (${r.reason})`:'')).join('\n')+'\n';
+  txt+=`\nDeinen aktuellen Plan siehst du hier: ${cloudCfg.githubUrl || 'https://webervik.github.io/personaldispo/'}`;
+
+  window.open('https://wa.me/?text='+encodeURIComponent(txt), '_blank');
+  rs.forEach(r=>r.notified=true);
+  saveState(); renderRequests();
+}
+
+function markNotified(nid){
+  (state.requests||[]).forEach(r=>{ if(r.nurseId===nid && r.status!=='pending') r.notified=true; });
+  saveState(); renderRequests();
+}
+
 // ── Verlauf (GitHub Commit History) ────────────────────────────────────────
 let _historyLoaded = false;
 
