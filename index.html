@@ -920,18 +920,27 @@ function renderSignupView(){
     const assigns=getAssignments(key).filter(a=>!a.vacation);
     const dow=date.getDay();
 
+    // Dienste, für die bereits eine Abmeldung angefragt ist, zählen für die
+    // Belegung NICHT mehr mit. Sonst blockiert der noch nicht bestätigte alte
+    // Dienst den gewünschten neuen — und die Pflegerin kann ihren Wunsch
+    // (z. B. Spätdienst → Tagdienst) gar nicht erst äußern.
+    const wirdAbgemeldet=a=>
+      a.nurseId===selectedNurseId &&
+      !!pendingRequestFor(key, a.customStart||'08:00', a.customEnd||'22:00', 'remove');
+    const aktiv=assigns.filter(a=>!wirdAbgemeldet(a));
+
     const slots=OPEN_SHIFTS.map(s=>{
       const sMin=timeToMin(s.start); let eMin=timeToMin(s.end); if(eMin<=sMin) eMin+=1440;
-      const isMine=assigns.some(a=>
+      const isMine=aktiv.some(a=>
         a.nurseId===selectedNurseId &&
         (a.customStart||'08:00')===s.start &&
         (a.customEnd||'22:00')===s.end
       );
-      const isBlocked=!isMine&&assigns.some(a=>
-        a.nurseId===selectedNurseId&&shiftOverlaps(sMin,eMin,a.customStart||'08:00',a.customEnd||'15:00')
+      const isBlocked=!isMine&&aktiv.some(a=>
+        a.nurseId===selectedNurseId&&shiftOverlaps(sMin,eMin,a.customStart||'08:00',a.customEnd||'22:00')
       );
-      const isTaken=!isMine&&!isBlocked&&assigns.some(a=>
-        a.nurseId!==selectedNurseId&&shiftOverlaps(sMin,eMin,a.customStart||'08:00',a.customEnd||'15:00')
+      const isTaken=!isMine&&!isBlocked&&aktiv.some(a=>
+        a.nurseId!==selectedNurseId&&shiftOverlaps(sMin,eMin,a.customStart||'08:00',a.customEnd||'22:00')
       );
       const reqAdd    = pendingRequestFor(key, s.start, s.end, 'add');
       const reqRemove = pendingRequestFor(key, s.start, s.end, 'remove');
