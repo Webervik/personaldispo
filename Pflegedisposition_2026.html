@@ -908,7 +908,13 @@
   .req-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--border);flex-wrap:wrap}
   .req-when{flex:1;min-width:190px;font-size:13px}
   .req-type-remove{color:var(--accent,#C1502E);font-weight:600}
+  .req-aenderung{display:block;font-size:11px;color:var(--teal,#2A7A6F);font-weight:600;margin-top:2px}
   .req-decided{font-size:12px;color:var(--slate);padding:4px 0}
+  .req-card.req-wartet{border-color:var(--accent,#C1502E);box-shadow:0 0 0 2px rgba(193,80,46,.12)}
+  .req-frage{margin-top:10px;padding:10px 12px;background:var(--cream);border-radius:8px}
+  .req-frage-text{font-size:13px;line-height:1.45}
+  .req-erledigt{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;
+    padding:8px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;font-size:13px}
 
   /* ── Admin PIN screen ── */
   #admin-pin-screen {
@@ -3532,6 +3538,29 @@ function _reqDateLabel(r){
 }
 function _reqTimeLabel(r){ return `${r.customStart}–${r.customEnd}`; }
 
+// Fasst Ab- und Anmeldung am selben Tag zu EINER verständlichen Zeile zusammen
+// ("15:00–22:00 → 08:00–22:00"), statt sie als zwei getrennte Punkte zu listen.
+function _rueckmeldungZeilen(list){
+  const proTag={};
+  list.forEach(r=>{ (proTag[r.date]=proTag[r.date]||[]).push(r); });
+  return Object.keys(proTag).sort().map(dat=>{
+    const g=proTag[dat];
+    const weg=g.filter(r=>r.type==='remove').map(_reqTimeLabel);
+    const neu=g.filter(r=>r.type!=='remove').map(_reqTimeLabel);
+    const kopf=_reqDateLabel({date:dat});
+    if(weg.length && neu.length) return `${kopf}: ${weg.join(', ')} → ${neu.join(', ')}`;
+    if(neu.length)               return `${kopf}: ${neu.join(', ')}`;
+    return `${kopf}: ${weg.join(', ')} — abgemeldet`;
+  });
+}
+
+// Tage, an denen dieselbe Pflegerin sowohl ab- als auch anmeldet = Änderung
+function _aenderungsTage(list){
+  const proTag={};
+  list.forEach(r=>{ (proTag[r.date]=proTag[r.date]||{}); proTag[r.date][r.type]=true; });
+  return new Set(Object.keys(proTag).filter(dat=>proTag[dat].add&&proTag[dat].remove));
+}
+
 function renderRequests(){
   updateRequestBadge();
   const el=document.getElementById('requests-list');
@@ -3558,10 +3587,12 @@ function renderRequests(){
         <h3><span>${nurse?nurse.name:nid} <span style="font-weight:400;font-size:13px;color:var(--slate)">· ${rs.length} offen</span></span>
           <button class="btn btn-primary btn-sm" onclick="approveAllForNurse('${nid}')">Alle bestätigen</button>
         </h3>`;
+      const aend=_aenderungsTage(rs);
       rs.forEach(r=>{
         html+=`<div class="req-row">
           <span class="req-when">${_reqDateLabel(r)} · ${_reqTimeLabel(r)}
-            ${r.type==='remove'?'<span class="req-type-remove">· Abmeldung</span>':''}</span>
+            ${r.type==='remove'?'<span class="req-type-remove">· Abmeldung</span>':''}
+            ${aend.has(r.date)?'<span class="req-aenderung">🔄 Änderung — beide Zeilen dieses Tages zusammen entscheiden</span>':''}</span>
           <button class="btn btn-primary btn-sm" onclick="approveRequest('${r.id}')">✓ Bestätigen</button>
           <button class="btn btn-secondary btn-sm" onclick="rejectRequest('${r.id}')">✗ Ablehnen</button>
         </div>`;
@@ -3579,17 +3610,46 @@ function renderRequests(){
       .forEach(nid=>{
         const rs=byN2[nid];
         const nurse=getNurse(nid);
-        html+=`<div class="req-card">
+        const wartet=_wartetAufBestaetigung[nid];
+        html+=`<div class="req-card${wartet?' req-wartet':''}">
           <h3><span>${nurse?nurse.name:nid}</span>
-            <span style="display:flex;gap:6px;flex-wrap:wrap">
+            ${wartet ? '' : `<span style="display:flex;gap:6px;flex-wrap:wrap">
               <button class="btn btn-primary btn-sm" onclick="notifyNurse('${nid}')">📱 Per WhatsApp mitteilen</button>
               <button class="btn btn-secondary btn-sm" onclick="markNotified('${nid}')" title="Ohne Nachricht als erledigt markieren">Erledigt</button>
-            </span>
+            </span>`}
           </h3>`;
         rs.sort((a,b)=>a.date.localeCompare(b.date)).forEach(r=>{
           html+=`<div class="req-decided">${r.status==='approved'?'✅':'❌'} ${_reqDateLabel(r)} · ${_reqTimeLabel(r)}${r.type==='remove'?' (Abmeldung)':''}${r.reason?` — ${r.reason}`:''}</div>`;
         });
+        if(wartet){
+          html+=`<div class="req-frage">
+            <div class="req-frage-text">WhatsApp wurde geöffnet. Hast du die Nachricht an
+              <strong>${nurse?nurse.name:''}</strong> abgeschickt?</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+              <button class="btn btn-primary btn-sm" onclick="bestaetigeRueckmeldung('${nid}')">Ja, erledigt</button>
+              <button class="btn btn-secondary btn-sm" onclick="abbrechenRueckmeldung('${nid}')">Noch nicht</button>
+            </div>
+          </div>`;
+        }
         html+='</div>';
+      });
+  }
+
+  // Zuletzt rückgemeldet — falls versehentlich markiert, hier zurückholen
+  const erledigt=all.filter(r=>r.status!=='pending' && r.notified);
+  if(erledigt.length){
+    const byN3={};
+    erledigt.forEach(r=>{ (byN3[r.nurseId]=byN3[r.nurseId]||[]).push(r); });
+    html+='<h3 style="font-family:\'DM Serif Display\',serif;font-size:17px;margin:26px 0 6px">Bereits rückgemeldet</h3>'
+        + '<p style="font-size:12px;color:var(--slate);margin-bottom:10px">Versehentlich markiert? Hier zurückholen.</p>';
+    Object.keys(byN3)
+      .sort((a,b)=>(getNurse(a)?.name||'').localeCompare(getNurse(b)?.name||'','de'))
+      .forEach(nid=>{
+        const nurse=getNurse(nid);
+        html+=`<div class="req-erledigt">
+          <span>${nurse?nurse.name:nid} <span style="color:var(--slate)">· ${byN3[nid].length} rückgemeldet</span></span>
+          <button class="btn btn-secondary btn-sm" onclick="rueckmeldungZurueckholen('${nid}')">↩︎ Zurückholen</button>
+        </div>`;
       });
   }
 
@@ -3649,7 +3709,12 @@ function rejectRequest(id){
   saveState(); renderRequests();
 }
 
-// Rückmeldung per WhatsApp — Text wird vorbereitet, Empfängerin wählst du in WhatsApp
+// Rückmeldung per WhatsApp — Text wird vorbereitet, Empfängerin wählst du in WhatsApp.
+// WICHTIG: Der Klick markiert NICHT sofort als erledigt. Erst deine ausdrückliche
+// Bestätigung tut das — sonst rutschen nach dem Ausblenden einer Karte die nächsten
+// Pflegerinnen unter den Mauszeiger und ein zweiter Klick trifft die Falsche.
+let _wartetAufBestaetigung = {};   // nurseId → true, solange die Nachricht offen ist
+
 function notifyNurse(nid){
   const rs=(state.requests||[]).filter(r=>r.nurseId===nid && r.status!=='pending' && !r.notified);
   if(!rs.length){ showToast('Keine offenen Rückmeldungen'); return; }
@@ -3657,21 +3722,53 @@ function notifyNurse(nid){
   const vorname=nurse ? nurse.name.split(' ')[0] : '';
   const ok=rs.filter(r=>r.status==='approved');
   const no=rs.filter(r=>r.status==='rejected');
-  const fmt=r=>`${_reqDateLabel(r)} ${_reqTimeLabel(r)}${r.type==='remove'?' (Abmeldung)':''}`;
-
   let txt=`Hallo ${vorname}, hier die Rückmeldung zu deinen Anfragen:\n`;
-  if(ok.length) txt+=`\n✅ Bestätigt:\n`+ok.map(r=>'• '+fmt(r)).join('\n')+'\n';
-  if(no.length) txt+=`\n❌ Leider nicht möglich:\n`+no.map(r=>'• '+fmt(r)+(r.reason?` (${r.reason})`:'')).join('\n')+'\n';
+  if(ok.length) txt+=`\n✅ Bestätigt:\n`+_rueckmeldungZeilen(ok).map(z=>'• '+z).join('\n')+'\n';
+  if(no.length){
+    const gruende=[...new Set(no.filter(r=>r.reason).map(r=>r.reason))];
+    txt+=`\n❌ Leider nicht möglich:\n`+_rueckmeldungZeilen(no).map(z=>'• '+z).join('\n')
+       +(gruende.length?`\n(${gruende.join('; ')})`:'')+'\n';
+  }
   txt+=`\nDeinen aktuellen Plan siehst du hier: ${cloudCfg.githubUrl || 'https://webervik.github.io/personaldispo/'}`;
 
   window.open('https://wa.me/?text='+encodeURIComponent(txt), '_blank');
-  rs.forEach(r=>r.notified=true);
-  saveState(); renderRequests();
+  _wartetAufBestaetigung[nid]=true;   // Karte bleibt stehen und fragt nach
+  renderRequests();
 }
 
-function markNotified(nid){
-  (state.requests||[]).forEach(r=>{ if(r.nurseId===nid && r.status!=='pending') r.notified=true; });
+// Erst dieser Schritt markiert als erledigt — mit Namen in der Rückfrage
+function bestaetigeRueckmeldung(nid){
+  const nurse=getNurse(nid);
+  const rs=(state.requests||[]).filter(r=>r.nurseId===nid && r.status!=='pending' && !r.notified);
+  if(!rs.length) return;
+  rs.forEach(r=>{ r.notified=true; r.notifiedAt=new Date().toISOString(); });
+  delete _wartetAufBestaetigung[nid];
   saveState(); renderRequests();
+  showToast(`✅ Rückmeldung an ${nurse?nurse.name.split(' ')[0]:''} als erledigt vermerkt`);
+}
+
+function abbrechenRueckmeldung(nid){
+  delete _wartetAufBestaetigung[nid];
+  renderRequests();
+}
+
+// Ohne Nachricht als erledigt markieren — mit ausdrücklicher Rückfrage
+function markNotified(nid){
+  const nurse=getNurse(nid);
+  const anzahl=(state.requests||[]).filter(r=>r.nurseId===nid && r.status!=='pending' && !r.notified).length;
+  if(!anzahl) return;
+  if(!confirm(`${anzahl} Rückmeldung(en) an ${nurse?nurse.name:''} ohne Nachricht als erledigt markieren?`)) return;
+  bestaetigeRueckmeldung(nid);
+}
+
+// Versehentlich als erledigt markiert → zurückholen
+function rueckmeldungZurueckholen(nid){
+  const nurse=getNurse(nid);
+  (state.requests||[]).forEach(r=>{
+    if(r.nurseId===nid && r.status!=='pending' && r.notified){ r.notified=false; delete r.notifiedAt; }
+  });
+  saveState(); renderRequests();
+  showToast(`↩️ ${nurse?nurse.name.split(' ')[0]:''} steht wieder in der Liste`);
 }
 
 // ── Verlauf (GitHub Commit History) ────────────────────────────────────────
