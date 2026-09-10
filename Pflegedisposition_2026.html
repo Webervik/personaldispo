@@ -1657,7 +1657,9 @@ async function _fetchAndMerge() {
   }
 
   if (added.length > 0 || removedCount > 0) {
-    saveState();
+    // Bewusst nur lokal: alles hier Übernommene stammt aus GitHub. Ein Hochladen
+    // würde den gesamten lokalen Plan zurückschreiben und fremde Änderungen kippen.
+    saveState(true);
     renderCalendar();
   }
   return added;
@@ -1863,7 +1865,11 @@ function loadState() {
   state.shiftTypes  = JSON.parse(JSON.stringify(DEFAULT_SHIFT_TYPES));
   state.assignments = JSON.parse(JSON.stringify(DEFAULT_ASSIGNMENTS));
 }
-function saveState() {
+// nurLokal=true: nur auf diesem Gerät sichern, NICHT zu GitHub hochladen.
+// Wird vom Hintergrund-Abgleich genutzt: dessen Änderungen kommen ja von GitHub,
+// es gibt also nichts zurückzuschreiben. Früher lud der Abgleich den kompletten
+// Dienstplan hoch und überschrieb dabei Änderungen, die anderswo gemacht wurden.
+function saveState(nurLokal) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({
     version: '2026',
     nurses: state.nurses,
@@ -1875,7 +1881,7 @@ function saveState() {
     requests: state.requests,
   }));
   // Auto-sync to GitHub if token is configured (debounced)
-  if (cloudCfg.githubToken && cloudCfg.githubRepo) {
+  if (!nurLokal && cloudCfg.githubToken && cloudCfg.githubRepo) {
     clearTimeout(saveState._debounce);
     saveState._debounce = setTimeout(saveToCloud, 2000);
   }
