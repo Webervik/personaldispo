@@ -908,6 +908,8 @@
   .req-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--border);flex-wrap:wrap}
   .req-when{flex:1;min-width:190px;font-size:13px}
   .req-type-remove{color:var(--accent,#C1502E);font-weight:600}
+  .req-konflikt{display:block;font-size:11.5px;color:#9B2C2C;font-weight:600;margin-top:2px}
+  .req-row-konflikt{background:#FFF1F2;margin:0 -8px;padding-left:8px;padding-right:8px;border-radius:6px}
   .req-aenderung{display:block;font-size:11px;color:var(--teal,#2A7A6F);font-weight:600;margin-top:2px}
   .req-decided{font-size:12px;color:var(--slate);padding:4px 0}
   .req-card.req-wartet{border-color:var(--accent,#C1502E);box-shadow:0 0 0 2px rgba(193,80,46,.12)}
@@ -3517,6 +3519,36 @@ function nursePinHash(nurseId, pin){ return sha256Hex(nurseId+':'+pin); }
 // ══ ANFRAGEN DER PFLEGERINNEN (Freigabe-Verfahren) ══════════════════════════
 function pendingRequests(){ return (state.requests||[]).filter(r=>r.status==='pending'); }
 
+// ── Überschneidungen mit ANDEREN Pflegerinnen erkennen ──────────────────────
+// Offene Anfragen blockieren in der Pflegerinnen-App keinen Platz. Deshalb
+// können zwei Pflegerinnen denselben Dienst anfragen — hier wird das sichtbar,
+// bevor bestätigt wird. (Anlass: 24./25.10.2026 Zandraa + Hicran doppelt.)
+function _spanne(s,e){
+  const a=timeToMin(s||'08:00'); let b=timeToMin(e||'22:00');
+  if(b<=a) b+=1440;               // Nachtdienst über Mitternacht
+  return [a,b];
+}
+function _ueberlappt(s1,e1,s2,e2){
+  const [a,b]=_spanne(s1,e1), [c,d]=_spanne(s2,e2);
+  return a<d && c<b;
+}
+function requestKonflikte(r){
+  if(!r || r.type!=='add') return [];
+  const out=[];
+  getAssignments(r.date).forEach(a=>{
+    if(a.vacation || a.nurseId===r.nurseId) return;
+    if(_ueberlappt(r.customStart,r.customEnd,a.customStart,a.customEnd))
+      out.push({ name:getNurse(a.nurseId)?.name||'?', art:'schon eingetragen', zeit:`${a.customStart||'08:00'}–${a.customEnd||'22:00'}` });
+  });
+  pendingRequests().forEach(o=>{
+    if(o.id===r.id || o.type!=='add' || o.date!==r.date || o.nurseId===r.nurseId) return;
+    if(_ueberlappt(r.customStart,r.customEnd,o.customStart,o.customEnd))
+      out.push({ name:getNurse(o.nurseId)?.name||'?', art:'auch angefragt', zeit:`${o.customStart}–${o.customEnd}` });
+  });
+  return out;
+}
+function _konfliktText(k){ return k.map(x=>`${x.name} (${x.art}, ${x.zeit})`).join(' · '); }
+
 // Popup, wenn seit dem letzten Abgleich neue Anfragen eingegangen sind
 function notifyNewRequests(countBefore){
   const jetzt = pendingRequests().length;
@@ -3595,10 +3627,12 @@ function renderRequests(){
         </h3>`;
       const aend=_aenderungsTage(rs);
       rs.forEach(r=>{
-        html+=`<div class="req-row">
+        const konf=requestKonflikte(r);
+        html+=`<div class="req-row${konf.length?' req-row-konflikt':''}">
           <span class="req-when">${_reqDateLabel(r)} · ${_reqTimeLabel(r)}
             ${r.type==='remove'?'<span class="req-type-remove">· Abmeldung</span>':''}
-            ${aend.has(r.date)?'<span class="req-aenderung">🔄 Änderung — beide Zeilen dieses Tages zusammen entscheiden</span>':''}</span>
+            ${aend.has(r.date)?'<span class="req-aenderung">🔄 Änderung — beide Zeilen dieses Tages zusammen entscheiden</span>':''}
+            ${konf.length?`<span class="req-konflikt">⚠️ Überschneidung: ${_konfliktText(konf)}</span>`:''}</span>
           <button class="btn btn-primary btn-sm" onclick="approveRequest('${r.id}')">✓ Bestätigen</button>
           <button class="btn btn-secondary btn-sm" onclick="rejectRequest('${r.id}')">✗ Ablehnen</button>
         </div>`;
@@ -3665,6 +3699,10 @@ function renderRequests(){
 function approveRequest(id, silent){
   const r=(state.requests||[]).find(x=>x.id===id);
   if(!r || r.status!=='pending') return;
+  if(!silent){
+    const k=requestKonflikte(r);
+    if(k.length && !confirm(`⚠️ Überschneidung am ${_reqDateLabel(r)}:\n${k.map(x=>'• '+x.name+' — '+x.art+', '+x.zeit).join('\n')}\n\nTrotzdem bestätigen? Dann ist der Dienst doppelt belegt.`)) return;
+  }
 
   if(r.type==='add'){
     const list=[...getAssignments(r.date)];
@@ -3695,13 +3733,22 @@ function approveRequest(id, silent){
 }
 
 function approveAllForNurse(nid){
-  const rs=pendingRequests().filter(r=>r.nurseId===nid);
+  const rs=pendingRequests().filter(r=>r.nurseId===nid).sort((a,b)=>a.date.localeCompare(b.date));
   if(!rs.length) return;
   const nurse=getNurse(nid);
-  if(!confirm(`Alle ${rs.length} Anfragen von ${nurse?nurse.name:''} bestätigen?`)) return;
-  rs.forEach(r=>approveRequest(r.id, true));
+  const frei=rs.filter(r=>!requestKonflikte(r).length);
+  const strittig=rs.length-frei.length;
+  if(!frei.length){ alert(`Alle ${rs.length} Anfragen von ${nurse?nurse.name:''} überschneiden sich mit anderen Pflegerinnen — bitte einzeln entscheiden.`); return; }
+  const frage = strittig
+    ? `${frei.length} Anfragen von ${nurse?nurse.name:''} bestätigen?\n\n${strittig} ${strittig===1?'Anfrage überschneidet':'Anfragen überschneiden'} sich mit anderen Pflegerinnen und ${strittig===1?'bleibt':'bleiben'} zum Einzelentscheid offen.`
+    : `Alle ${rs.length} Anfragen von ${nurse?nurse.name:''} bestätigen?`;
+  if(!confirm(frage)) return;
+  // Einzeln nacheinander, mit frischer Prüfung: eine gerade bestätigte Anfrage
+  // kann für die nächste zum Konflikt werden.
+  let ok=0;
+  frei.forEach(r=>{ if(!requestKonflikte(r).length){ approveRequest(r.id, true); ok++; } });
   saveState(); renderRequests(); renderCalendar();
-  showToast(`✅ ${rs.length} Anfragen bestätigt`);
+  showToast(`✅ ${ok} bestätigt${rs.length-ok?` · ${rs.length-ok} offen wegen Überschneidung`:''}`);
 }
 
 function rejectRequest(id){
