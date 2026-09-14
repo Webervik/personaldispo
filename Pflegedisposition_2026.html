@@ -908,6 +908,7 @@
   .req-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--border);flex-wrap:wrap}
   .req-when{flex:1;min-width:190px;font-size:13px}
   .req-type-remove{color:var(--accent,#C1502E);font-weight:600}
+  .req-gestellt{display:block;font-size:11px;color:var(--slate);font-weight:400;margin-top:1px}
   .req-konflikt{display:block;font-size:11.5px;color:#9B2C2C;font-weight:600;margin-top:2px}
   .req-row-konflikt{background:#FFF1F2;margin:0 -8px;padding-left:8px;padding-right:8px;border-radius:6px}
   .req-aenderung{display:block;font-size:11px;color:var(--teal,#2A7A6F);font-weight:600;margin-top:2px}
@@ -3576,6 +3577,17 @@ function _reqDateLabel(r){
 }
 function _reqTimeLabel(r){ return `${r.customStart}–${r.customEnd}`; }
 
+// Zeitpunkt als "Fr, 11.09., 14:58 Uhr" (Jahr nur, wenn nicht das laufende)
+function _zeitpunkt(iso){
+  if(!iso) return '';
+  const d=new Date(iso);
+  if(isNaN(d)) return '';
+  const tag=`${DAYS_DE[d.getDay()]}, ${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.`;
+  const jahr=d.getFullYear()!==new Date().getFullYear()?String(d.getFullYear()):'';
+  const uhr=`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  return `${tag}${jahr}, ${uhr} Uhr`;
+}
+
 // Fasst Ab- und Anmeldung am selben Tag zu EINER verständlichen Zeile zusammen
 // ("15:00–22:00 → 08:00–22:00"), statt sie als zwei getrennte Punkte zu listen.
 function _rueckmeldungZeilen(list){
@@ -3632,7 +3644,8 @@ function renderRequests(){
           <span class="req-when">${_reqDateLabel(r)} · ${_reqTimeLabel(r)}
             ${r.type==='remove'?'<span class="req-type-remove">· Abmeldung</span>':''}
             ${aend.has(r.date)?'<span class="req-aenderung">🔄 Änderung — beide Zeilen dieses Tages zusammen entscheiden</span>':''}
-            ${konf.length?`<span class="req-konflikt">⚠️ Überschneidung: ${_konfliktText(konf)}</span>`:''}</span>
+            ${konf.length?`<span class="req-konflikt">⚠️ Überschneidung: ${_konfliktText(konf)}</span>`:''}
+            ${r.requestedAt?`<span class="req-gestellt">angefragt ${_zeitpunkt(r.requestedAt)}</span>`:''}</span>
           <button class="btn btn-primary btn-sm" onclick="approveRequest('${r.id}')">✓ Bestätigen</button>
           <button class="btn btn-secondary btn-sm" onclick="rejectRequest('${r.id}')">✗ Ablehnen</button>
         </div>`;
@@ -3659,7 +3672,8 @@ function renderRequests(){
             </span>`}
           </h3>`;
         rs.sort((a,b)=>a.date.localeCompare(b.date)).forEach(r=>{
-          html+=`<div class="req-decided">${r.status==='approved'?'✅':'❌'} ${_reqDateLabel(r)} · ${_reqTimeLabel(r)}${r.type==='remove'?' (Abmeldung)':''}${r.reason?` — ${r.reason}`:''}</div>`;
+          html+=`<div class="req-decided">${r.status==='approved'?'✅':'❌'} ${_reqDateLabel(r)} · ${_reqTimeLabel(r)}${r.type==='remove'?' (Abmeldung)':''}${r.reason?` — ${r.reason}`:''}
+            <span class="req-gestellt">${r.requestedAt?`angefragt ${_zeitpunkt(r.requestedAt)}`:''}${r.decidedAt?` · entschieden ${_zeitpunkt(r.decidedAt)}`:''}</span></div>`;
         });
         if(wartet){
           html+=`<div class="req-frage">
