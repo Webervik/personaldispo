@@ -908,8 +908,9 @@
   .req-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--border);flex-wrap:wrap}
   .req-when{flex:1;min-width:190px;font-size:13px}
   .req-type-remove{color:var(--accent,#C1502E);font-weight:600}
-  .nacht-badge{font-size:9.5px;font-weight:700;color:#9A3412;background:#FFEDD5;border-radius:4px;padding:1px 4px;margin:1px 0 2px;display:inline-block}
+  .nacht-badge{cursor:pointer;font-size:9.5px;font-weight:700;color:#9A3412;background:#FFEDD5;border-radius:4px;padding:1px 4px;margin:1px 0 2px;display:inline-block}
   .nacht-badge.gedeckt{color:#166534;background:#DCFCE7}
+  .nacht-badge:hover{text-decoration:underline;filter:brightness(.96)}
   .nb-box{margin:4px 0 14px;padding:10px 12px;background:var(--cream);border-radius:var(--radius-sm)}
   .nb-hint{font-size:11.5px;color:var(--slate);margin-top:6px}
   .nb-form{display:flex;gap:10px;flex-wrap:wrap;font-size:12.5px}
@@ -2115,7 +2116,8 @@ function renderCalendar() {
           const nb = document.createElement('div');
           nb.className = 'nacht-badge' + (gedeckt ? ' gedeckt' : '');
           nb.textContent = gedeckt ? '🌙 Nacht ✓' : '🌙 Nacht gesucht';
-          nb.title = gedeckt ? 'Nachtbedarf gedeckt' : 'Nachtdienst gesucht — Pflegerinnen können ihn anfragen';
+          nb.title = gedeckt ? 'Nachtdienst eingetragen — klicken zum Bearbeiten' : 'Klicken, um eine Pflegerin für diese Nacht einzutragen';
+          nb.onclick = (e) => { e.stopPropagation(); nachtBadgeKlick(key); };
           cell.appendChild(nb);
         }
 
@@ -2573,7 +2575,8 @@ function renderShiftModalContent(existing) {
   const activeNurses = sortedNurses(state.nurses.filter(n => n.active));
   const container = document.getElementById('shift-modal-content');
 
-  const nurseOptions = activeNurses.map(n =>
+  const nurseOptions = (existing?._platzhalter ? '<option value="" selected disabled>— Pflegerin wählen —</option>' : '') +
+    activeNurses.map(n =>
     `<option value="${n.id}" ${existing?.nurseId === n.id ? 'selected' : ''}>${n.name}</option>`
   ).join('');
 
@@ -2643,6 +2646,7 @@ function onShiftTypeChange() {
 
 function saveShift() {
   const nurseId = document.getElementById('sm-nurse').value;
+  if (!nurseId) { alert('Bitte zuerst eine Pflegerin wählen.'); return; }
   const vacationType = document.getElementById('sm-vacation').value;
   const note = document.getElementById('sm-note').value;
 
@@ -3568,6 +3572,32 @@ function nachtDeckung(key){
 }
 function nachtGedeckt(key){ return !!nachtDeckung(key); }
 
+// Offene Nacht-Anfragen der Pflegerinnen für diesen Tag
+function _nachtAnfragen(key){
+  return pendingRequests().filter(r=>r.date===key && r.type==='add' &&
+    _kreuztMitternacht({customStart:r.customStart, customEnd:r.customEnd}));
+}
+
+// Klick auf "🌙 Nacht gesucht" → Dialog mit vorbelegtem Nachtdienst, nur noch
+// Pflegerin wählen. Klick auf "🌙 Nacht ✓" → den eingetragenen Nachtdienst bearbeiten.
+function nachtBadgeKlick(key){
+  const deck=nachtDeckung(key);
+  if(deck){
+    const idx=getAssignments(key).indexOf(deck);
+    if(idx>=0){ openEditShiftModal(key, idx); return; }
+  }
+  const art=_nachtArt(state.nachtBedarf[key]);
+  const preset={ shiftTypeId: art.id, customStart: art.start, customEnd: art.end, _platzhalter: true };
+  // Hat genau eine Pflegerin diese Nacht angefragt, ist sie gleich vorausgewählt
+  const anfr=_nachtAnfragen(key);
+  if(anfr.length===1){ preset.nurseId=anfr[0].nurseId; preset._platzhalter=false; }
+  openAddShiftModal(key);
+  const { year: Y, month: M, day: D } = parseKey(key);
+  document.getElementById('shift-modal-title').textContent =
+    `🌙 ${art.name} eintragen: ${DAYS_FULL[new Date(Y,M,D).getDay()]}, ${D}. ${MONTHS_DE[M]} ${Y}`;
+  renderShiftModalContent(preset);
+}
+
 function _nachtBedarfBox(key){
   if(!key) return '';
   const b=state.nachtBedarf?.[key]||null;
@@ -3582,7 +3612,8 @@ function _nachtBedarfBox(key){
     </div>
     <div class="nb-hint">${!b ? 'Markierte Nächte können die Pflegerinnen anfragen.'
       : deck ? `✓ Gedeckt durch ${getNurse(deck.nurseId)?.name||'?'} (${deck.customStart}–${deck.customEnd}).`
-      : 'Gesucht — erscheint den Pflegerinnen als anfragbar.'}</div>`;
+      : 'Gesucht — erscheint den Pflegerinnen als anfragbar.'}</div>
+    ${!deck && b && _nachtAnfragen(key).length ? `<div class="nb-hint" style="color:var(--teal);font-weight:600">📨 Angefragt von: ${_nachtAnfragen(key).map(r=>`${getNurse(r.nurseId)?.name||'?'} (${r.customStart}–${r.customEnd})`).join(', ')}</div>` : ''}`;
 }
 
 function setNachtBedarf(key, art){
