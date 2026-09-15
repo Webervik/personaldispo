@@ -908,6 +908,20 @@
   .req-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--border);flex-wrap:wrap}
   .req-when{flex:1;min-width:190px;font-size:13px}
   .req-type-remove{color:var(--accent,#C1502E);font-weight:600}
+  .nacht-badge{font-size:9.5px;font-weight:700;color:#9A3412;background:#FFEDD5;border-radius:4px;padding:1px 4px;margin:1px 0 2px;display:inline-block}
+  .nacht-badge.gedeckt{color:#166534;background:#DCFCE7}
+  .nb-box{margin:4px 0 14px;padding:10px 12px;background:var(--cream);border-radius:var(--radius-sm)}
+  .nb-hint{font-size:11.5px;color:var(--slate);margin-top:6px}
+  .nb-form{display:flex;gap:10px;flex-wrap:wrap;font-size:12.5px}
+  .nb-form label{display:flex;flex-direction:column;gap:2px}
+  .nb-form input,.nb-form select{padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-family:inherit}
+  .nb-wt{display:flex;gap:10px;flex-wrap:wrap;font-size:12.5px;margin-top:8px}
+  .nb-liste{margin-top:10px;max-height:320px;overflow-y:auto;border-top:1px solid var(--border)}
+  .nb-monat{font-weight:700;font-size:12px;margin:10px 0 4px;color:var(--slate);text-transform:uppercase;letter-spacing:.4px}
+  .nb-zeile{display:flex;align-items:center;gap:10px;padding:5px 0;font-size:13px}
+  .nb-zeile span:first-child{flex:1}
+  .nb-status{font-size:11.5px;font-weight:600;color:#9A3412}
+  .nb-zeile.gedeckt .nb-status{color:#166534}
   .req-gestellt{display:block;font-size:11px;color:var(--slate);font-weight:400;margin-top:1px}
   .req-konflikt{display:block;font-size:11.5px;color:#9B2C2C;font-weight:600;margin-top:2px}
   .req-row-konflikt{background:#FFF1F2;margin:0 -8px;padding-left:8px;padding-right:8px;border-radius:6px}
@@ -1196,6 +1210,7 @@
   <div id="tab-requests" class="tab-content">
     <h2 style="font-family:'DM Serif Display',serif;font-size:22px;margin-bottom:2px">Anfragen der Pflegerinnen</h2>
     <p style="font-size:12px;color:var(--slate);margin-bottom:14px">Erst nach deiner Bestätigung wird daraus ein Dienst im Plan.</p>
+    <div id="nachtbedarf-panel"></div>
     <div id="requests-list"></div>
   </div>
 
@@ -1328,6 +1343,8 @@ let state = {
   pin: '',
   // Anfragen der Pflegerinnen (Freigabe-Verfahren)
   requests: [],
+  // Nachtbedarf: Datum → Dienstart-ID ('nd' 22–08 oder 'ndl' 20–08)
+  nachtBedarf: {},
   // "Gelöscht"-Merkliste: verhindert, dass vom Admin gelöschte Pflegerinnen-
   // Einträge durch den GitHub-Abgleich wieder zurückkommen.
   // Schlüssel → addedAt des gelöschten Eintrags (zur Unterscheidung von Neu-Einträgen)
@@ -1486,6 +1503,7 @@ async function saveToCloud() {
       assignments: state.assignments,
       pin: state.pin || '',
       requests: state.requests || [],
+      nachtBedarf: state.nachtBedarf || {},
       // Signup-Token (umgekehrt, damit GitHub-Secret-Scanning nicht anschlägt).
       // Reihenfolge: 1) neu eingetippter Token  2) von GitHub beibehaltener (funktionierender)
       // Token  3) lokal gespeicherter Alt-Token als letzter Fallback.
@@ -1537,6 +1555,7 @@ async function loadFromCloud() {
   try {
     const { data: s } = await _fetchRemoteData();
     state.requests    = Array.isArray(s.requests) ? s.requests : (state.requests || []);
+    state.nachtBedarf = (s.nachtBedarf && typeof s.nachtBedarf==='object') ? s.nachtBedarf : (state.nachtBedarf || {});
     state.nurses      = s.nurses      || state.nurses;
     state.shiftTypes  = s.shiftTypes  || state.shiftTypes;
     state.assignments = s.assignments || state.assignments;
@@ -1860,6 +1879,7 @@ function loadState() {
         state.viewMonth   = typeof s.viewMonth === 'number' ? s.viewMonth : 0;
         state.deletedSignups = s.deletedSignups || {};
         state.requests = Array.isArray(s.requests) ? s.requests : [];
+        state.nachtBedarf = (s.nachtBedarf && typeof s.nachtBedarf==='object') ? s.nachtBedarf : {};
         return;
       }
     }
@@ -1882,6 +1902,7 @@ function saveState(nurLokal) {
     viewMonth: state.viewMonth,
     deletedSignups: state.deletedSignups,
     requests: state.requests,
+    nachtBedarf: state.nachtBedarf,
   }));
   // Auto-sync to GitHub if token is configured (debounced)
   if (!nurLokal && cloudCfg.githubToken && cloudCfg.githubRepo) {
@@ -2087,6 +2108,16 @@ function renderCalendar() {
           dn.appendChild(hb);
         }
         cell.appendChild(dn);
+
+        // Nachtbedarf: gesucht (orange) oder schon gedeckt (grün)
+        if (state.nachtBedarf && state.nachtBedarf[key]) {
+          const gedeckt = nachtGedeckt(key);
+          const nb = document.createElement('div');
+          nb.className = 'nacht-badge' + (gedeckt ? ' gedeckt' : '');
+          nb.textContent = gedeckt ? '🌙 Nacht ✓' : '🌙 Nacht gesucht';
+          nb.title = gedeckt ? 'Nachtbedarf gedeckt' : 'Nachtdienst gesucht — Pflegerinnen können ihn anfragen';
+          cell.appendChild(nb);
+        }
 
         // Coverage colouring (day window 8–22, ignore nights)
         if (!cell.classList.contains('other-month')) {
@@ -2588,6 +2619,7 @@ function renderShiftModalContent(existing) {
       📅 Eingetragen am ${new Date(existing.addedAt).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})} Uhr
       ${existing.addedBy === 'nurse' ? '· <span style="color:var(--teal)">von Pflegerin selbst</span>' : existing.addedBy === 'admin' ? '· <span style="color:var(--slate)">durch Admin</span>' : ''}
     </div>` : ''}
+    <div id="nb-box" class="nb-box">${_nachtBedarfBox(_modalKey)}</div>
     <div class="modal-actions">
       ${_modalIdx !== null ? `<button class="btn btn-danger" onclick="deleteShift()">Löschen</button>` : ''}
       <button class="btn btn-secondary" onclick="closeShiftModal()">Abbrechen</button>
@@ -2960,7 +2992,7 @@ function showTab(tab, btn) {
   if (tab === 'nurses')   renderNurses();
   if (tab === 'shifts')   renderShiftTypes();
   if (tab === 'alerts')   runChecks();
-  if (tab === 'requests') renderRequests();
+  if (tab === 'requests') { renderNachtBedarfPanel(); renderRequests(); }
   if (tab === 'myplan')   { renderNursePicker('nurse-picker', null); renderPersonalSchedule(); }
   if (tab === 'settings') initSettingsTab();
   if (tab === 'history')  loadHistory();
@@ -3516,6 +3548,126 @@ function sha256Hex(str){
   return H.map(x=>x.toString(16).padStart(8,'0')).join('');
 }
 function nursePinHash(nurseId, pin){ return sha256Hex(nurseId+':'+pin); }
+
+// ══ NACHTBEDARF ════════════════════════════════════════════════════════════
+// Viktor markiert Nächte, die er braucht. Nur diese erscheinen den Pflegerinnen
+// als anfragbar. "Gedeckt" wird berechnet, nicht gespeichert: Fällt ein
+// bestätigter Nachtdienst später weg, ist der Bedarf automatisch wieder offen.
+function _nachtArt(id){
+  const st=getShiftType(id);
+  const fallback={ nd:['Nachtdienst','22:00','08:00'], ndl:['Nacht lang','20:00','08:00'] }[id] || ['Nachtdienst','22:00','08:00'];
+  return { id, name: st?.name || fallback[0], start: st?.start || fallback[1], end: st?.end || fallback[2] };
+}
+function _kreuztMitternacht(a){ return timeToMin(a.customEnd||'22:00') <= timeToMin(a.customStart||'08:00'); }
+// Liefert den Nachtdienst, der den Bedarf deckt (oder null)
+function nachtDeckung(key){
+  const b=state.nachtBedarf?.[key]; if(!b) return null;
+  const art=_nachtArt(b);
+  return getAssignments(key).find(a=>!a.vacation && _kreuztMitternacht(a) &&
+    _ueberlappt(art.start,art.end,a.customStart,a.customEnd)) || null;
+}
+function nachtGedeckt(key){ return !!nachtDeckung(key); }
+
+function _nachtBedarfBox(key){
+  if(!key) return '';
+  const b=state.nachtBedarf?.[key]||null;
+  const knopf=(id,text)=>`<button class="btn btn-sm ${b===id?'btn-primary':'btn-secondary'}" onclick="setNachtBedarf('${key}',${id?`'${id}'`:'null'})">${text}</button>`;
+  const nd=_nachtArt('nd'), ndl=_nachtArt('ndl');
+  const deck=nachtDeckung(key);
+  return `<div class="form-label">🌙 Nachtdienst für diesen Tag suchen</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      ${knopf(null,'Kein Bedarf')}
+      ${knopf('nd',`${nd.name} ${nd.start}–${nd.end}`)}
+      ${knopf('ndl',`${ndl.name} ${ndl.start}–${ndl.end}`)}
+    </div>
+    <div class="nb-hint">${!b ? 'Markierte Nächte können die Pflegerinnen anfragen.'
+      : deck ? `✓ Gedeckt durch ${getNurse(deck.nurseId)?.name||'?'} (${deck.customStart}–${deck.customEnd}).`
+      : 'Gesucht — erscheint den Pflegerinnen als anfragbar.'}</div>`;
+}
+
+function setNachtBedarf(key, art){
+  if(!state.nachtBedarf) state.nachtBedarf={};
+  if(art) state.nachtBedarf[key]=art; else delete state.nachtBedarf[key];
+  saveState();
+  renderCalendar();
+  const box=document.getElementById('nb-box');
+  if(box) box.innerHTML=_nachtBedarfBox(key);
+  renderNachtBedarfPanel();
+}
+
+let _nbForm=null;   // Formularwerte über Neuaufbau hinweg merken
+function renderNachtBedarfPanel(){
+  const el=document.getElementById('nachtbedarf-panel'); if(!el) return;
+  const jetzt=new Date();
+  const heute=dateKey(jetzt.getFullYear(),jetzt.getMonth(),jetzt.getDate());
+  if(!_nbForm){
+    const bis=new Date(jetzt); bis.setDate(bis.getDate()+30);
+    _nbForm={ von:heute, bis:dateKey(bis.getFullYear(),bis.getMonth(),bis.getDate()), art:'nd', wt:[1,2,3,4,5,6,0] };
+  }
+  const f=_nbForm;
+  const eintr=Object.keys(state.nachtBedarf||{}).filter(k=>k>=heute).sort();
+  const offen=eintr.filter(k=>!nachtGedeckt(k));
+  const WT=[[1,'Mo'],[2,'Di'],[3,'Mi'],[4,'Do'],[5,'Fr'],[6,'Sa'],[0,'So']];
+
+  let liste='';
+  if(eintr.length){
+    let monat='';
+    eintr.forEach(k=>{
+      const {year:Y,month:M,day:D}=parseKey(k);
+      if(`${Y}-${M}`!==monat){ monat=`${Y}-${M}`; liste+=`<div class="nb-monat">${MONTHS_DE[M]} ${Y}</div>`; }
+      const art=_nachtArt(state.nachtBedarf[k]);
+      const deck=nachtDeckung(k);
+      liste+=`<div class="nb-zeile${deck?' gedeckt':''}">
+        <span>${DAYS_DE[new Date(Y,M,D).getDay()]}, ${D}.${M+1}. · ${art.name} ${art.start}–${art.end}</span>
+        <span class="nb-status">${deck?`✓ ${getNurse(deck.nurseId)?.name||'?'}`:'gesucht'}</span>
+        <button class="btn btn-secondary btn-sm" onclick="setNachtBedarf('${k}',null)" title="Bedarf entfernen">✕</button>
+      </div>`;
+    });
+  }
+
+  el.innerHTML=`<div class="req-card nb-panel">
+    <h3><span>🌙 Nachtbedarf <span style="font-weight:400;font-size:13px;color:var(--slate)">· ${offen.length} gesucht, ${eintr.length-offen.length} gedeckt</span></span></h3>
+    <div class="nb-form">
+      <label>Von <input type="date" id="nb-von" value="${f.von}"></label>
+      <label>Bis <input type="date" id="nb-bis" value="${f.bis}"></label>
+      <label>Art <select id="nb-art">
+        <option value="nd" ${f.art==='nd'?'selected':''}>${_nachtArt('nd').name} ${_nachtArt('nd').start}–${_nachtArt('nd').end}</option>
+        <option value="ndl" ${f.art==='ndl'?'selected':''}>${_nachtArt('ndl').name} ${_nachtArt('ndl').start}–${_nachtArt('ndl').end}</option>
+      </select></label>
+    </div>
+    <div class="nb-wt">${WT.map(([v,t])=>`<label><input type="checkbox" class="nb-wt-cb" value="${v}" ${f.wt.includes(v)?'checked':''}> ${t}</label>`).join('')}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 4px">
+      <button class="btn btn-primary btn-sm" onclick="nachtBedarfBereich(false)">🌙 Als gesucht markieren</button>
+      <button class="btn btn-secondary btn-sm" onclick="nachtBedarfBereich(true)">Markierung im Zeitraum entfernen</button>
+    </div>
+    ${liste?`<div class="nb-liste">${liste}</div>`:'<p class="nb-hint">Noch keine Nächte markiert. Einzelne Tage gehen auch per Klick auf den Tag im Dienstplan.</p>'}
+  </div>`;
+}
+
+function nachtBedarfBereich(entfernen){
+  const von=document.getElementById('nb-von').value;
+  const bis=document.getElementById('nb-bis').value;
+  const art=document.getElementById('nb-art').value;
+  const wt=[...document.querySelectorAll('.nb-wt-cb:checked')].map(x=>+x.value);
+  _nbForm={von,bis,art,wt};
+  if(!von||!bis){ alert('Bitte „Von" und „Bis" wählen.'); return; }
+  if(!wt.length){ alert('Bitte mindestens einen Wochentag wählen.'); return; }
+  const d=new Date(von+'T00:00:00'), ende=new Date(bis+'T00:00:00');
+  if(ende<d){ alert('„Bis" liegt vor „Von".'); return; }
+  if((ende-d)/864e5>400 && !confirm('Das sind mehr als 400 Tage. Wirklich?')) return;
+  if(!state.nachtBedarf) state.nachtBedarf={};
+  let n=0;
+  while(d<=ende){
+    if(wt.includes(d.getDay())){
+      const k=dateKey(d.getFullYear(),d.getMonth(),d.getDate());
+      if(entfernen){ if(state.nachtBedarf[k]){ delete state.nachtBedarf[k]; n++; } }
+      else if(state.nachtBedarf[k]!==art){ state.nachtBedarf[k]=art; n++; }
+    }
+    d.setDate(d.getDate()+1);
+  }
+  saveState(); renderCalendar(); renderNachtBedarfPanel();
+  showToast(entfernen ? `🗑 ${n} Nächte entfernt` : `🌙 ${n} Nächte als gesucht markiert`);
+}
 
 // ══ ANFRAGEN DER PFLEGERINNEN (Freigabe-Verfahren) ══════════════════════════
 function pendingRequests(){ return (state.requests||[]).filter(r=>r.status==='pending'); }
