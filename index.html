@@ -200,6 +200,10 @@ body{font-family:'DM Sans',sans-serif;background:var(--cream);color:var(--ink);m
   padding:3px 9px;border-radius:10px;white-space:nowrap}
 /* Freie Plätze deutlicher */
 .signup-slot.available{font-weight:600}
+/* Nachtdienst-Knopf */
+.signup-slot.nacht.available{border-color:#3730A3;color:#3730A3;background:#EEF2FF}
+.signup-slot.nacht.available:hover{background:#3730A3;color:#fff}
+.signup-slot.nacht.mine{background:#3730A3;border-color:#3730A3}
 .pdf-btn{background:var(--warm-white);border:1px solid var(--border);color:var(--ink);
   padding:7px 13px;border-radius:var(--radius-sm);font-family:inherit;font-size:12.5px;
   font-weight:600;cursor:pointer;white-space:nowrap}
@@ -467,7 +471,7 @@ const DAY_START = 8 * 60;
 const DAY_END   = 22 * 60;
 
 // State — populated from cloud only
-let state = { nurses: [], shiftTypes: [], assignments: {}, requests: [], viewYear: 0, viewMonth: 0 };
+let state = { nurses: [], shiftTypes: [], assignments: {}, requests: [], nachtBedarf: {}, viewYear: 0, viewMonth: 0 };
 let selectedNurseId = null;
 let currentView = 'calendar';
 let writeToken = '';        // GitHub write token (from daten.json, set by admin)
@@ -889,6 +893,9 @@ const OPEN_SHIFTS = [
   {id:'sd', label:'SD 15–22', start:'15:00', end:'22:00'},
 ];
 
+// Dienst über Mitternacht (Nachtdienst)?
+function kreuztMitternacht(a){ return timeToMin(a.customEnd||'22:00') <= timeToMin(a.customStart||'08:00'); }
+
 function shiftOverlaps(s1,e1,s2str,e2str){
   const s2=timeToMin(s2str); let e2=timeToMin(e2str); if(e2<=s2) e2+=1440;
   return s1<e2 && s2<e1;
@@ -929,7 +936,16 @@ function renderSignupView(){
       !!pendingRequestFor(key, a.customStart||'08:00', a.customEnd||'22:00', 'remove');
     const aktiv=assigns.filter(a=>!wirdAbgemeldet(a));
 
-    const slots=OPEN_SHIFTS.map(s=>{
+    // Nachtdienst nur an Tagen anbieten, für die Viktor Bedarf markiert hat
+    const nbId=(state.nachtBedarf||{})[key];
+    const angebot=OPEN_SHIFTS.slice();
+    if(nbId){
+      const st=(state.shiftTypes||[]).find(x=>x.id===nbId);
+      const nStart=st?.start||(nbId==='ndl'?'20:00':'22:00'), nEnde=st?.end||'08:00';
+      angebot.push({id:nbId, label:`🌙 ${nbId==='ndl'?'NL':'ND'} ${nStart.slice(0,2)}–${nEnde.slice(0,2)}`, start:nStart, end:nEnde, nacht:true});
+    }
+
+    const slots=angebot.map(s=>{
       const sMin=timeToMin(s.start); let eMin=timeToMin(s.end); if(eMin<=sMin) eMin+=1440;
       const isMine=aktiv.some(a=>
         a.nurseId===selectedNurseId &&
@@ -940,7 +956,8 @@ function renderSignupView(){
         a.nurseId===selectedNurseId&&shiftOverlaps(sMin,eMin,a.customStart||'08:00',a.customEnd||'22:00')
       );
       const isTaken=!isMine&&!isBlocked&&aktiv.some(a=>
-        a.nurseId!==selectedNurseId&&shiftOverlaps(sMin,eMin,a.customStart||'08:00',a.customEnd||'22:00')
+        a.nurseId!==selectedNurseId&&(!s.nacht||kreuztMitternacht(a))&&
+        shiftOverlaps(sMin,eMin,a.customStart||'08:00',a.customEnd||'22:00')
       );
       const reqAdd    = pendingRequestFor(key, s.start, s.end, 'add');
       const reqRemove = pendingRequestFor(key, s.start, s.end, 'remove');
@@ -1003,16 +1020,17 @@ function renderSignupView(){
       <div class="signup-slots">`;
 
     t.slots.forEach(s=>{
+      if(s.nacht && s.isTaken && !s.isMine) return;   // Bedarf schon gedeckt → nicht anzeigen
       if(s.isMine && s.reqRemove){
-        html+=`<button class="signup-slot pending" onclick="withdrawRequest('${s.reqRemove.id}',this)" title="Abmeldung angefragt – tippen zum Zurückziehen">${s.label} ⏳<span class="req-note">Viktor meldet sich</span></button>`;
+        html+=`<button class="signup-slot pending${s.nacht?' nacht':''}" onclick="withdrawRequest('${s.reqRemove.id}',this)" title="Abmeldung angefragt – tippen zum Zurückziehen">${s.label} ⏳<span class="req-note">Viktor meldet sich</span></button>`;
       } else if(s.isMine){
-        html+=`<button class="signup-slot mine" onclick="requestRemoval('${t.key}','${s.start}','${s.end}',this)" title="Abmeldung anfragen">${s.label} ✓<span class="undo-hint">✕</span></button>`;
+        html+=`<button class="signup-slot mine${s.nacht?' nacht':''}" onclick="requestRemoval('${t.key}','${s.start}','${s.end}',this)" title="Abmeldung anfragen">${s.label} ✓<span class="undo-hint">✕</span></button>`;
       } else if(s.reqAdd){
-        html+=`<button class="signup-slot pending" onclick="withdrawRequest('${s.reqAdd.id}',this)" title="Angefragt – tippen zum Zurückziehen">${s.label} ⏳<span class="req-note">Viktor meldet sich</span></button>`;
+        html+=`<button class="signup-slot pending${s.nacht?' nacht':''}" onclick="withdrawRequest('${s.reqAdd.id}',this)" title="Angefragt – tippen zum Zurückziehen">${s.label} ⏳<span class="req-note">Viktor meldet sich</span></button>`;
       } else if(s.isBlocked||s.isTaken){
-        html+=`<button class="signup-slot taken" disabled>${s.label}</button>`;
+        html+=`<button class="signup-slot taken${s.nacht?' nacht':''}" disabled>${s.label}</button>`;
       } else {
-        html+=`<button class="signup-slot available" onclick="requestShift('${t.key}','${s.id}','${s.start}','${s.end}',this)">${s.label}</button>`;
+        html+=`<button class="signup-slot available${s.nacht?' nacht':''}" onclick="requestShift('${t.key}','${s.id}','${s.start}','${s.end}',this)">${s.label}</button>`;
       }
     });
 
@@ -1178,6 +1196,7 @@ async function _saveRequests(mutate, commitMsg){
   });
   if(!putRes.ok){const e=await putRes.json(); throw new Error(e.message||putRes.status);}
   state.requests    = currentData.requests;
+  if (currentData.nachtBedarf) state.nachtBedarf = currentData.nachtBedarf;
   state.assignments = currentData.assignments || state.assignments;
 }
 
@@ -1483,6 +1502,7 @@ boot(); return;
   state.shiftTypes  = fixShiftTypeNames(s.shiftTypes);
   state.assignments = s.assignments || {};
   state.requests    = Array.isArray(s.requests) ? s.requests : [];
+  state.nachtBedarf = (s.nachtBedarf && typeof s.nachtBedarf==='object') ? s.nachtBedarf : {};
   writeToken        = s.wte ? s.wte.split('').reverse().join('') : (SIGNUP_TOKEN || '');
 
   if (state.nurses.length === 0) {
