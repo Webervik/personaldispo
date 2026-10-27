@@ -2667,6 +2667,16 @@ function saveShift() {
         addedBy: 'admin',
       };
 
+  // Überschneidungen melden, bevor gespeichert wird. Die Prüfung im Anfragen-Tab greift
+  // nur beim Bestätigen — direkt im Kalender angelegte Dienste liefen bisher ungeprüft
+  // durch (so entstanden u. a. die Doppelbelegungen vom 13.01., 13.02. und 04.12.2026).
+  // Doppelbesetzung ist manchmal gewollt, daher nur eine Rückfrage, keine Sperre.
+  if (!newEntry.vacation) {
+    const konf = _dienstKonflikte(_modalKey, newEntry, _modalIdx);
+    if (konf.length && !confirm(
+        `Überschneidung am ${_modalKey}:\n\n${konf.map(k => '• ' + k).join('\n')}\n\nTrotzdem speichern?`)) return;
+  }
+
   if (_modalIdx !== null) {
     // Wird ein Pflegerinnen-Eintrag durch Bearbeiten verändert/ersetzt, merken wir den
     // alten Eintrag, damit der GitHub-Abgleich ihn nicht wieder zurückholt.
@@ -3760,6 +3770,22 @@ function requestKonflikte(r){
   return out;
 }
 function _konfliktText(k){ return k.map(x=>`${x.name} (${x.art}, ${x.zeit})`).join(' · '); }
+
+// Überschneidungen eines im Kalender eingetragenen Dienstes gegen die übrigen Dienste
+// desselben Tages. ausserIdx = Position des gerade bearbeiteten Eintrags (zählt nicht gegen sich selbst).
+function _dienstKonflikte(date, neu, ausserIdx){
+  const [ns,ne]=_dienstZeiten(neu);
+  const out=[];
+  getAssignments(date).forEach((a,i)=>{
+    if(i===ausserIdx || a.vacation) return;
+    const [s,e]=_dienstZeiten(a);
+    if(!_ueberlappt(ns,ne,s,e)) return;
+    const selbst=a.nurseId===neu.nurseId;
+    const wer=selbst?'dieselbe Pflegerin':(getNurse(a.nurseId)?.name||'?');
+    out.push(`${wer}: ${s}–${e}`);
+  });
+  return out;
+}
 
 // Popup, wenn seit dem letzten Abgleich neue Anfragen eingegangen sind
 function notifyNewRequests(countBefore){
