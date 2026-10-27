@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Pflegedisposition</title>
+<title>📋 Pflegedisposition 2026</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%231C1814' width='100' height='100'/><g fill='%23FFF' transform='translate(20,15)'><rect x='5' y='0' width='50' height='60' rx='3' fill='%23F7F3EE'/><line x1='15' y1='15' x2='45' y2='15' stroke='%231C1814' stroke-width='2'/><line x1='15' y1='25' x2='45' y2='25' stroke='%231C1814' stroke-width='2'/><line x1='15' y1='35' x2='40' y2='35' stroke='%231C1814' stroke-width='2'/><line x1='15' y1='45' x2='40' y2='45' stroke='%231C1814' stroke-width='2'/></g></svg>" />
 <style>
   @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap');
 
@@ -2160,7 +2161,7 @@ function renderCalendar() {
             gl.textContent = '8–22 frei';
             gl.style.cursor = 'pointer';
             gl.title = 'Klicken um Dienst einzutragen';
-            gl.onclick = (e) => { e.stopPropagation(); openAddShiftModal(key); };
+            gl.onclick = (e) => { e.stopPropagation(); openAddShiftModal(key, '08:00', '22:00'); };
             cell.appendChild(gl);
           } else if (cov.status === 'partial') {
             cov.gaps.forEach(([gs, ge]) => {
@@ -2169,7 +2170,7 @@ function renderCalendar() {
               gl.textContent = `Lücke ${minToTime(gs)}–${minToTime(ge)}`;
               gl.style.cursor = 'pointer';
               gl.title = 'Klicken um Dienst einzutragen';
-              gl.onclick = (e) => { e.stopPropagation(); openAddShiftModal(key); };
+              gl.onclick = (e) => { e.stopPropagation(); openAddShiftModal(key, minToTime(gs), minToTime(ge)); };
               cell.appendChild(gl);
             });
           }
@@ -2547,9 +2548,11 @@ function runChecks(calY, calM) {
   }
 }
 
-function openAddShiftModal(key) {
+function openAddShiftModal(key, suggestedStart, suggestedEnd) {
   _modalKey = key;
   _modalIdx = null;
+  _suggestedStart = suggestedStart;
+  _suggestedEnd = suggestedEnd;
   const { year: Y, month: M, day: D } = parseKey(key);
   const date = new Date(Y, M, D);
   document.getElementById('shift-modal-title').textContent =
@@ -2606,11 +2609,11 @@ function renderShiftModalContent(existing) {
       <div class="form-row" id="sm-time-row">
         <div class="form-group">
           <label class="form-label">Von</label>
-          <input type="time" id="sm-start" class="form-input" value="${existing?.customStart || getShiftType(existing?.shiftTypeId || state.shiftTypes[0]?.id)?.start || '08:00'}" />
+          <input type="time" id="sm-start" class="form-input" value="${existing?.customStart || _suggestedStart || getShiftType(existing?.shiftTypeId || state.shiftTypes[0]?.id)?.start || '08:00'}" />
         </div>
         <div class="form-group">
           <label class="form-label">Bis</label>
-          <input type="time" id="sm-end" class="form-input" value="${existing?.customEnd || getShiftType(existing?.shiftTypeId || state.shiftTypes[0]?.id)?.end || '15:00'}" />
+          <input type="time" id="sm-end" class="form-input" value="${existing?.customEnd || _suggestedEnd || getShiftType(existing?.shiftTypeId || state.shiftTypes[0]?.id)?.end || '15:00'}" />
         </div>
       </div>
     </div>
@@ -3323,7 +3326,7 @@ function initAdminPin() {
 
 // ── Open shift sharing ────────────────────────────────────────────────────────
 function copyAlertsText() {
-  const {viewYear:Y, viewMonth:M} = state;
+  const Y = alertsViewYear, M = alertsViewMonth;
   const lastDay = new Date(Y,M+1,0).getDate();
   const lines = [`Offene Dienste ${MONTHS_DE[M]} ${Y}:`,''];
   for (let d=1; d<=lastDay; d++) {
@@ -3343,7 +3346,7 @@ function copyAlertsText() {
 }
 
 function copyAlertsWhatsApp() {
-  const {viewYear:Y, viewMonth:M} = state;
+  const Y = alertsViewYear, M = alertsViewMonth;
   const lastDay = new Date(Y,M+1,0).getDate();
   const lines = [`*Offene Dienste ${MONTHS_DE[M]} ${Y}* 📋`,''];
   for (let d=1; d<=lastDay; d++) {
@@ -3716,18 +3719,43 @@ function _ueberlappt(s1,e1,s2,e2){
   const [a,b]=_spanne(s1,e1), [c,d]=_spanne(s2,e2);
   return a<d && c<b;
 }
+// Zeiten eines Dienstes auflösen (eigene Zeiten schlagen die Dienstart)
+function _dienstZeiten(a){
+  const t=getShiftType(a.shiftTypeId)||{};
+  return [a.customStart||t.start||'08:00', a.customEnd||t.end||'22:00'];
+}
+// Dienst, für den bereits eine Abmeldung aussteht, blockiert keinen neuen Wunsch
+// (sonst käme eine Pflegerin nie von einem Dienst in einen überlappenden anderen).
+function _hatOffeneAbmeldung(date,a){
+  const [s,e]=_dienstZeiten(a);
+  return pendingRequests().some(o=>o.type==='remove' && o.date===date && o.nurseId===a.nurseId
+    && (o.customStart||'')===s && (o.customEnd||'')===e);
+}
 function requestKonflikte(r){
   if(!r || r.type!=='add') return [];
   const out=[];
+  // Achtung: auch Dienste DERSELBEN Pflegerin prüfen. Wurden sie früher übersprungen,
+  // konnte sich jemand selbst doppelt eintragen (27.11.2026: Zandraa 08–22 und 08–15).
+  // Angrenzende Dienste (08–15 / 15–22) gelten über _ueberlappt nicht als Konflikt.
   getAssignments(r.date).forEach(a=>{
-    if(a.vacation || a.nurseId===r.nurseId) return;
-    if(_ueberlappt(r.customStart,r.customEnd,a.customStart,a.customEnd))
-      out.push({ name:getNurse(a.nurseId)?.name||'?', art:'schon eingetragen', zeit:`${a.customStart||'08:00'}–${a.customEnd||'22:00'}` });
+    if(a.vacation) return;
+    if(a.nurseId===r.nurseId && _hatOffeneAbmeldung(r.date,a)) return;
+    const [s,e]=_dienstZeiten(a);
+    if(_ueberlappt(r.customStart,r.customEnd,s,e)){
+      const selbst=a.nurseId===r.nurseId;
+      out.push({ name: selbst?'sie selbst':(getNurse(a.nurseId)?.name||'?'),
+                 art: selbst?'hat an dem Tag schon einen Dienst':'schon eingetragen',
+                 zeit:`${s}–${e}` });
+    }
   });
   pendingRequests().forEach(o=>{
-    if(o.id===r.id || o.type!=='add' || o.date!==r.date || o.nurseId===r.nurseId) return;
-    if(_ueberlappt(r.customStart,r.customEnd,o.customStart,o.customEnd))
-      out.push({ name:getNurse(o.nurseId)?.name||'?', art:'auch angefragt', zeit:`${o.customStart}–${o.customEnd}` });
+    if(o.id===r.id || o.type!=='add' || o.date!==r.date) return;
+    if(_ueberlappt(r.customStart,r.customEnd,o.customStart,o.customEnd)){
+      const selbst=o.nurseId===r.nurseId;
+      out.push({ name: selbst?'sie selbst':(getNurse(o.nurseId)?.name||'?'),
+                 art: selbst?'zweite eigene Anfrage':'auch angefragt',
+                 zeit:`${o.customStart}–${o.customEnd}` });
+    }
   });
   return out;
 }
@@ -3860,7 +3888,7 @@ function renderRequests(){
         });
         if(wartet){
           html+=`<div class="req-frage">
-            <div class="req-frage-text">WhatsApp wurde geöffnet. Hast du die Nachricht an
+            <div class="req-frage-text">Nachricht kopiert. Hast du die Bestätigungsnachricht an
               <strong>${nurse?nurse.name:''}</strong> abgeschickt?</div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
               <button class="btn btn-primary btn-sm" onclick="bestaetigeRueckmeldung('${nid}')">Ja, erledigt</button>
@@ -3981,7 +4009,7 @@ function notifyNurse(nid){
   }
   txt+=`\nDeinen aktuellen Plan siehst du hier: ${cloudCfg.githubUrl || 'https://webervik.github.io/personaldispo/'}`;
 
-  window.open('https://wa.me/?text='+encodeURIComponent(txt), '_blank');
+  navigator.clipboard.writeText(txt).then(() => showToast('Bestätigungsnachricht kopiert!'));
   _wartetAufBestaetigung[nid]=true;   // Karte bleibt stehen und fragt nach
   renderRequests();
 }
